@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { LlmService } from '../llm.service';
 import type { LlmConnectionsPort } from '../application/llm-connections.port';
 
 @Injectable()
 export class LlmConnectionsAdapter implements LlmConnectionsPort {
-  constructor(private readonly service: LlmService) {}
+  constructor(@Inject(LlmService) private readonly service: LlmService) {}
 
   list(workspaceId: string) {
     return this.service.list(workspaceId);
