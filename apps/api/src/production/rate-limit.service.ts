@@ -12,30 +12,23 @@ export interface RateLimitResult {
 export class RateLimitService implements OnModuleDestroy {
   private readonly redis = new Redis(
     process.env.VALKEY_URL ?? 'redis://localhost:6379',
-    { maxRetriesPerRequest: 1, enableOfflineQueue: false },
+    { maxRetriesPerRequest: 1 },
   );
 
   async consume(
     subject: string,
     policy: RateLimitPolicy,
   ): Promise<RateLimitResult> {
-    const windowId = Math.floor(
-      Date.now() / 1_000 / policy.windowSeconds,
-    );
+    const windowId = Math.floor(Date.now() / 1_000 / policy.windowSeconds);
     const key = `rate:${policy.id}:${windowId}:${subject}`;
-    const result = (await this.redis.eval(
-      `local current=redis.call('INCR',KEYS[1]); if current==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; local ttl=redis.call('TTL',KEYS[1]); return {current,ttl}`,
-      1,
-      key,
-      policy.windowSeconds,
-    )) as [number, number];
-    const current = Number(result[0]);
-    const resetSeconds = Math.max(1, Number(result[1]));
+    const current = await this.redis.incr(key);
+    if (current === 1) await this.redis.expire(key, policy.windowSeconds);
+    const ttl = await this.redis.ttl(key);
 
     return {
       allowed: current <= policy.limit,
       remaining: Math.max(0, policy.limit - current),
-      resetSeconds,
+      resetSeconds: Math.max(1, ttl),
     };
   }
 
