@@ -9,7 +9,8 @@ export class ProductionAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<any>();
     const path = request.url?.split('?')[0] ?? '';
-    if (/^\/api\/(health|auth\/(register|login|refresh)|oauth\/[^/]+\/callback)/.test(path)) return true;
+    const isPublic = /^\/api\/(health|auth\/(register|login|refresh)|connections\/[^/]+\/complete)/.test(path);
+    if (isPublic) return true;
 
     const authorization = request.headers?.authorization as string | undefined;
     if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Bearer access token is required');
@@ -23,7 +24,7 @@ export class ProductionAuthGuard implements CanActivate {
 
     request.user = claims;
     request.headers['x-user-id'] = claims.sub;
-    const workspaceId = request.params?.workspaceId;
+    const workspaceId = request.params?.workspaceId ?? request.query?.workspaceId;
     if (workspaceId) {
       const membership = await this.prisma.$queryRaw<{ id: string }[]>`SELECT id FROM "WorkspaceMember" WHERE "workspaceId"=${workspaceId}::uuid AND "userId"=${claims.sub}::uuid LIMIT 1`;
       if (!membership.length) throw new ForbiddenException('You are not a member of this workspace');
