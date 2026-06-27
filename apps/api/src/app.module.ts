@@ -9,8 +9,9 @@ import { QueueModule } from './queue/queue.module';
 import { PostsModule } from './posts/posts.module';
 import { ProductionModule } from './production/production.module';
 import { IdentityModule } from './identity/identity.module';
+import { InvitationsModule } from './invitations/invitations.module';
 
 @Module({
-  imports: [DatabaseModule, CryptoModule, HealthModule, WorkspacesModule, LlmModule, LeadsModule, QueueModule, PostsModule, ProductionModule, IdentityModule],
+  imports: [DatabaseModule, CryptoModule, HealthModule, WorkspacesModule, LlmModule, LeadsModule, QueueModule, PostsModule, ProductionModule, IdentityModule, InvitationsModule],
 })
 export class AppModule {}
