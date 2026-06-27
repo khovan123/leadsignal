@@ -7,8 +7,9 @@ import { LlmModule } from './llm/llm.module';
 import { LeadsModule } from './leads/leads.module';
 import { QueueModule } from './queue/queue.module';
 import { PostsModule } from './posts/posts.module';
+import { ProductionModule } from './production/production.module';
 
 @Module({
-  imports: [DatabaseModule, CryptoModule, HealthModule, WorkspacesModule, LlmModule, LeadsModule, QueueModule, PostsModule],
+  imports: [DatabaseModule, CryptoModule, HealthModule, WorkspacesModule, LlmModule, LeadsModule, QueueModule, PostsModule, ProductionModule],
 })
 export class AppModule {}

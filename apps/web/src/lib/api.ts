@@ -1,17 +1,30 @@
 import 'server-only';
+import { cookies } from 'next/headers';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-const workspaceId = process.env.NEXT_PUBLIC_DEMO_WORKSPACE_ID ?? '00000000-0000-4000-8000-000000000001';
-const userId = process.env.NEXT_PUBLIC_DEMO_USER_ID ?? '00000000-0000-4000-8000-000000000001';
+const apiUrl = process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiUrl}/api${path}`, {
-    ...init,
-    headers: { 'content-type': 'application/json', 'x-user-id': userId, 'x-workspace-id': workspaceId, ...(init?.headers ?? {}) },
-    cache: 'no-store',
-  });
-  if (!response.ok) throw new Error(`API ${response.status}: ${await response.text()}`);
-  return response.json() as Promise<T>;
+export async function getWorkspaceId(): Promise<string> {
+  const value = (await cookies()).get('ls_workspace')?.value;
+  if (!value) throw new Error('No active workspace is stored in the session');
+  return value;
 }
 
-export { workspaceId, userId };
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const accessToken = (await cookies()).get('ls_access')?.value;
+  if (!accessToken) throw new Error('Authentication is required');
+
+  const response = await fetch(`${apiUrl}/api${path}`, {
+    ...init,
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${accessToken}`,
+      ...(init?.headers ?? {}),
+    },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new Error(`API ${response.status}: ${await response.text()}`);
+  }
+  return response.json() as Promise<T>;
+}
