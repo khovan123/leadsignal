@@ -1,0 +1,40 @@
+enum CredentialKind {
+  API_KEY
+  OAUTH_ACCESS_TOKEN
+  WORKLOAD_IDENTITY
+}
+
+enum OAuthProvider {
+  REDDIT
+  OPENROUTER
+  GITHUB
+  GEMINI
+  OPENAI_WIF
+  ANTHROPIC_WIF
+}
+
+enum OAuthPurpose {
+  REDDIT_CONNECTION
+  LLM_CONNECTION
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum EmailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+enum CollectorRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
