@@ -1,0 +1,12 @@
+model AuthGrant {
+  id          String   @id @default(uuid())
+  grantDigest String   @unique
+  userId      String
+  workspaceId String
+  redirectUrl String
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([expiresAt])
+}
