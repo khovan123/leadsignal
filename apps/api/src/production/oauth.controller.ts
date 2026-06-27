@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req } from '@nestjs/common';
+import { Controller, Get, Param, Query, Redirect, Req } from '@nestjs/common';
 import { ProductionService } from './production.service';
 
 @Controller('connections')
@@ -6,12 +6,26 @@ export class OAuthController {
   constructor(private readonly service: ProductionService) {}
 
   @Get(':provider/authorize')
-  authorize(@Param('provider') provider: string, @Query('workspaceId') workspaceId: string, @Req() request: any) {
+  authorize(
+    @Param('provider') provider: string,
+    @Query('workspaceId') workspaceId: string,
+    @Req() request: any,
+  ) {
     return this.service.oauthStart(provider, workspaceId, request.user.sub);
   }
 
   @Get(':provider/complete')
-  complete(@Param('provider') provider: string, @Query('code') code?: string, @Query('state') state?: string) {
-    return this.service.oauthCallback(provider, code, state);
+  @Redirect()
+  async complete(
+    @Param('provider') provider: string,
+    @Query('code') code?: string,
+    @Query('state') state?: string,
+  ) {
+    const result = await this.service.oauthCallback(provider, code, state);
+    const appUrl = process.env.PUBLIC_APP_URL ?? 'http://localhost:3000';
+    return {
+      url: `${appUrl}/vi/llm?connected=${encodeURIComponent(result.provider)}`,
+      statusCode: 302,
+    };
   }
 }
