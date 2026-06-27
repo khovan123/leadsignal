@@ -1,0 +1,56 @@
+name: Production Readiness
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: leadsignal
+          POSTGRES_USER: leadsignal
+          POSTGRES_PASSWORD: leadsignal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U leadsignal -d leadsignal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://leadsignal:leadsignal@localhost:5432/leadsignal?schema=public
+      CREDENTIAL_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      JWT_ACCESS_SECRET: ci-access-secret-value-longer-than-thirty-two-characters
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+      NEXT_PUBLIC_DEMO_WORKSPACE_ID: demo-workspace
+      NEXT_PUBLIC_DEMO_USER_ID: demo-user
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm db:generate
+      - name: Apply migrations
+        id: migrate
+        continue-on-error: true
+        run: pnpm db:deploy > migration.log 2>&1
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: pnpm build > build.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-readiness-logs
+          path: |
+            migration.log
+            build.log
+      - name: Fail when validation failed
+        if: steps.migrate.outcome == 'failure' || steps.build.outcome == 'failure'
+        run: exit 1
