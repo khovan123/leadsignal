@@ -1,0 +1,153 @@
+model UserCredential {
+  userId          String   @id
+  passwordDigest  String
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AuthSession {
+  id           String    @id @default(uuid())
+  userId       String
+  familyId     String
+  secretDigest String    @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  rotatedAt    DateTime?
+  revokedAt    DateTime?
+  revokeReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId, expiresAt])
+  @@index([familyId])
+}
+
+model OAuthState {
+  id                    String        @id @default(uuid())
+  provider              OAuthProvider
+  purpose               OAuthPurpose
+  stateDigest           String        @unique
+  workspaceId           String?
+  userId                String?
+  redirectUri           String
+  encryptedCodeVerifier String?
+  codeVerifierIv        String?
+  codeVerifierAuthTag   String?
+  metadata              Json?
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  createdAt             DateTime      @default(now())
+
+  @@index([provider, purpose, expiresAt])
+  @@index([workspaceId])
+}
+
+model WorkspaceInvitation {
+  id               String           @id @default(uuid())
+  workspaceId      String
+  email            String
+  role             WorkspaceRole    @default(MEMBER)
+  tokenDigest      String           @unique
+  status           InvitationStatus @default(PENDING)
+  invitedByUserId  String
+  acceptedByUserId String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([workspaceId, status, expiresAt])
+  @@index([email, status])
+}
+
+model EmailOutbox {
+  id          String      @id @default(uuid())
+  workspaceId String?
+  recipient   String
+  subject     String
+  template    String
+  payload     Json
+  status      EmailStatus @default(PENDING)
+  attempts    Int         @default(0)
+  availableAt DateTime    @default(now())
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([status, availableAt])
+}
+
+model RedditAccount {
+  id                         String           @id @default(uuid())
+  workspaceId                String
+  ownerUserId                String
+  redditUserId               String
+  username                   String
+  status                     ConnectionStatus @default(ACTIVE)
+  scopes                     String[]
+  encryptedCredential        String
+  credentialIv               String
+  credentialAuthTag          String
+  encryptedRenewalCredential String?
+  renewalCredentialIv        String?
+  renewalCredentialAuthTag   String?
+  credentialExpiresAt        DateTime
+  lastCollectedAt            DateTime?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  deletedAt                  DateTime?
+
+  @@unique([workspaceId, redditUserId])
+  @@index([workspaceId, status])
+  @@index([ownerUserId])
+}
+
+model RedditSourceSchedule {
+  sourceId        String   @id
+  workspaceId     String
+  redditAccountId String?
+  intervalMinutes Int      @default(15)
+  maxPostsPerRun  Int      @default(100)
+  cursorAfter     String?
+  nextRunAt       DateTime?
+  lastRunAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([nextRunAt])
+}
+
+model RedditCollectorRun {
+  id              String             @id @default(uuid())
+  workspaceId     String
+  sourceId        String
+  redditAccountId String?
+  status          CollectorRunStatus @default(RUNNING)
+  discoveredCount Int                @default(0)
+  enqueuedCount   Int                @default(0)
+  errorCode       String?
+  errorMessage    String?
+  startedAt       DateTime           @default(now())
+  completedAt     DateTime?
+
+  @@index([workspaceId, startedAt])
+  @@index([sourceId, startedAt])
+}
+
+model LlmCredential {
+  connectionId               String         @id
+  credentialKind             CredentialKind @default(API_KEY)
+  oauthProvider              OAuthProvider?
+  encryptedRenewalCredential String?
+  renewalCredentialIv        String?
+  renewalCredentialAuthTag   String?
+  credentialExpiresAt        DateTime?
+  metadata                   Json?
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+}
