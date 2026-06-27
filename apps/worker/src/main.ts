@@ -2,7 +2,13 @@ import 'dotenv/config';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Worker } from 'bullmq';
-import { AppModule, LlmPoolRouterService, PrismaService } from '@leadsignal/api';
+import { randomUUID } from 'node:crypto';
+import {
+  AppModule,
+  LlmPoolRouterService,
+  PrismaService,
+  ProductionService,
+} from '@leadsignal/api';
 
 function createValkeyConnection() {
   const url = new URL(process.env.VALKEY_URL ?? 'redis://localhost:6379');
@@ -23,6 +29,8 @@ async function bootstrap() {
   });
   const prisma = app.get(PrismaService);
   const router = app.get(LlmPoolRouterService);
+  const production = app.get(ProductionService);
+  const workerId = randomUUID();
 
   const worker = new Worker(
     'post-classification',
@@ -90,7 +98,39 @@ async function bootstrap() {
     },
   );
 
+  const collect = async () => {
+    const leaseSeconds = Math.max(
+      60,
+      Number(process.env.REDDIT_COLLECTOR_INTERVAL_SECONDS ?? 300),
+    );
+    const acquired = await prisma.$queryRaw<{ ownerId: string }[]>`
+      INSERT INTO "CollectorLease" (name,"ownerId","expiresAt","updatedAt")
+      VALUES ('reddit',${workerId},NOW() + (${leaseSeconds} * INTERVAL '1 second'),NOW())
+      ON CONFLICT (name) DO UPDATE
+      SET "ownerId"=EXCLUDED."ownerId","expiresAt"=EXCLUDED."expiresAt","updatedAt"=NOW()
+      WHERE "CollectorLease"."expiresAt" < NOW()
+         OR "CollectorLease"."ownerId"=${workerId}
+      RETURNING "ownerId"
+    `;
+    if (acquired[0]?.ownerId !== workerId) return;
+
+    try {
+      const result = await production.collectReddit();
+      console.log('Reddit collector completed', result);
+    } catch (error) {
+      console.error('Reddit collector failed', error);
+    }
+  };
+
+  const collectorInterval = setInterval(
+    collect,
+    Number(process.env.REDDIT_COLLECTOR_INTERVAL_SECONDS ?? 300) * 1_000,
+  );
+  collectorInterval.unref();
+  void collect();
+
   const stop = async () => {
+    clearInterval(collectorInterval);
     await worker.close();
     await app.close();
     process.exit(0);
