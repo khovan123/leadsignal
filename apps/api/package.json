@@ -10,8 +10,8 @@
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @leadsignal/api test:e2e",
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.0",
