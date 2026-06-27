@@ -8,6 +8,8 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @leadsignal/api test:e2e",
+    "smoke:staging": "node scripts/staging-smoke.mjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
