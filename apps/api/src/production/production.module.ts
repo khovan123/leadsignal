@@ -5,17 +5,13 @@ import { PrismaService } from '../database/prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { EmailOutboxService } from './email-outbox.service';
 import { InvitationService } from './invitation.service';
-import { InvitationsController } from './invitations.controller';
-import { OAuthController } from './oauth.controller';
 import { ProductionAuthGuard } from './production.guard';
 import { ProductionService } from './production.service';
 import { RateLimitGuard } from './rate-limit.guard';
 import { RateLimitService } from './rate-limit.service';
-import { SessionController } from './session.controller';
 
 @Global()
 @Module({
-  controllers: [SessionController, InvitationsController, OAuthController],
   providers: [
     {
       provide: ProductionService,
@@ -50,6 +46,6 @@ import { SessionController } from './session.controller';
     { provide: APP_GUARD, useExisting: ProductionAuthGuard },
     { provide: APP_GUARD, useExisting: RateLimitGuard },
   ],
-  exports: [ProductionService, EmailOutboxService],
+  exports: [ProductionService, InvitationService, EmailOutboxService],
 })
 export class ProductionModule {}
