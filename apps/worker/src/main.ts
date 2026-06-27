@@ -5,6 +5,7 @@ import { Worker } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import {
   AppModule,
+  EmailOutboxService,
   LlmPoolRouterService,
   PrismaService,
   ProductionService,
@@ -30,6 +31,7 @@ async function bootstrap() {
   const prisma = app.get(PrismaService);
   const router = app.get(LlmPoolRouterService);
   const production = app.get(ProductionService);
+  const emailOutbox = app.get(EmailOutboxService);
   const workerId = randomUUID();
 
   const worker = new Worker(
@@ -122,15 +124,39 @@ async function bootstrap() {
     }
   };
 
+  let processingOutbox = false;
+  const deliverEmails = async () => {
+    if (processingOutbox) return;
+    processingOutbox = true;
+    try {
+      const result = await emailOutbox.processBatch(
+        workerId,
+        Number(process.env.EMAIL_OUTBOX_BATCH_SIZE ?? 20),
+      );
+      if (result.claimed > 0) console.log('Email outbox processed', result);
+    } catch (error) {
+      console.error('Email outbox processing failed', error);
+    } finally {
+      processingOutbox = false;
+    }
+  };
+
   const collectorInterval = setInterval(
     collect,
     Number(process.env.REDDIT_COLLECTOR_INTERVAL_SECONDS ?? 300) * 1_000,
   );
   collectorInterval.unref();
+  const emailInterval = setInterval(
+    deliverEmails,
+    Number(process.env.EMAIL_OUTBOX_INTERVAL_SECONDS ?? 10) * 1_000,
+  );
+  emailInterval.unref();
   void collect();
+  void deliverEmails();
 
   const stop = async () => {
     clearInterval(collectorInterval);
+    clearInterval(emailInterval);
     await worker.close();
     await app.close();
     process.exit(0);

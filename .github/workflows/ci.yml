@@ -5,20 +5,69 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: leadsignal
+          POSTGRES_USER: leadsignal
+          POSTGRES_PASSWORD: test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U leadsignal -d leadsignal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      DATABASE_URL: postgresql://leadsignal:leadsignal@localhost:5432/leadsignal?schema=public
-      NEXT_PUBLIC_API_URL: http://localhost:4000/api
-      NEXT_PUBLIC_DEMO_WORKSPACE_ID: demo-workspace
-      NEXT_PUBLIC_DEMO_USER_ID: demo-user
+      NODE_ENV: test
+      DATABASE_URL: postgresql://leadsignal:test-only@localhost:5432/leadsignal?schema=public
+      VALKEY_URL: redis://localhost:6379
+      INTERNAL_API_URL: http://localhost:4000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      RATE_LIMIT_FAIL_OPEN: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
+          cache-dependency-path: package.json
+      - name: Generate ephemeral test keys
+        run: |
+          echo "JWT_ACCESS_SECRET=$(openssl rand -hex 48)" >> "$GITHUB_ENV"
+          echo "CREDENTIAL_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile=false
       - run: pnpm db:generate
+      - run: pnpm db:deploy
       - run: pnpm build
+      - run: pnpm test
+      - name: Run E2E
+        id: e2e
+        continue-on-error: true
+        run: pnpm test:e2e > e2e.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-log
+          path: e2e.log
+      - name: Fail when E2E failed
+        if: ${{ steps.e2e.outcome == 'failure' }}
+        run: exit 1
