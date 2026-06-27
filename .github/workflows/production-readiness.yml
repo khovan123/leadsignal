@@ -69,5 +69,5 @@ jobs:
             build.log
             e2e.log
       - name: Fail when validation failed
-        if: steps.migrate.outcome == 'failure' || steps.build.outcome == 'failure' || steps.e2e.outcome == 'failure'
+        if: ${{ steps.migrate.outcome == 'failure' || steps.build.outcome == 'failure' || steps.e2e.outcome == 'failure' }}
         run: exit 1
