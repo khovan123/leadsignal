@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ConnectionStatus {
+  PENDING
+  ACTIVE
+  DEGRADED
+  RATE_LIMITED
+  INVALID
+  DRAINING
+  DISABLED
+}
+
+enum LlmProvider {
+  OPENAI
+  ANTHROPIC
+  GEMINI
+  OPENROUTER
+  GITHUB_MODELS
+  CUSTOM_OPENAI_COMPATIBLE
+  RULE_ENGINE
+}
+
+enum LlmTaskType {
+  BUYING_SIGNAL_CLASSIFICATION
+  LEAD_ENRICHMENT
+  REPORT_SUMMARY
+}
+
+enum RoutingMode {
+  CONSISTENCY_FIRST
+  AVAILABILITY_FIRST
+  OWNER_PRIORITY
+}
+
+enum LeadStatus {
+  NEW
+  REVIEWING
+  QUALIFIED
+  ASSIGNED
+  CONTACTED
+  CONVERTED
+  REJECTED
+  ARCHIVED
+}
+
+enum PriorityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ExecutionStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED_CAPACITY
+  SKIPPED_CIRCUIT_OPEN
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships    WorkspaceMember[]
+  llmConnections LlmConnection[]
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  locale    String   @default("vi")
+  timezone  String   @default("Asia/Ho_Chi_Minh")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members         WorkspaceMember[]
+  sources         RedditSource[]
+  discoveries     PostDiscovery[]
+  llmConnections  LlmConnection[]
+  routingPolicies LlmRoutingPolicy[]
+  classifications PostClassification[]
+  leads           Lead[]
+  executions      LlmExecution[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model RedditSource {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  type        String
+  subreddit   String?
+  searchQuery String?
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  discoveries PostDiscovery[]
+}
+
+model RedditPost {
+  id             String   @id @default(uuid())
+  externalPostId String   @unique
+  subreddit      String
+  authorUsername String?
+  title          String
+  body           String
+  permalink      String
+  score          Int      @default(0)
+  commentCount   Int      @default(0)
+  postedAt       DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  discoveries    PostDiscovery[]
+  classifications PostClassification[]
+  leads          Lead[]
+}
+
+model PostDiscovery {
+  id          String   @id @default(uuid())
+  workspaceId String
+  postId      String
+  sourceId    String
+  discoveredAt DateTime @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  post      RedditPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  source    RedditSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, postId, sourceId])
+  @@index([workspaceId, discoveredAt])
+}
+
+model LlmConnection {
+  id                      String           @id @default(uuid())
+  workspaceId             String
+  ownerUserId             String
+  provider                LlmProvider
+  name                    String
+  accountLabel            String?
+  status                  ConnectionStatus @default(PENDING)
+  poolEnabled             Boolean          @default(true)
+  baseUrl                 String?
+  encryptedCredential     String?
+  credentialIv            String?
+  credentialAuthTag       String?
+  ownerConcurrencyLimit   Int              @default(2)
+  workspaceConcurrencyCap Int?
+  healthScore             Int              @default(100)
+  cooldownUntil           DateTime?
+  lastVerifiedAt          DateTime?
+  lastUsedAt              DateTime?
+  lastErrorCode           String?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  deletedAt               DateTime?
+
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner     User                 @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  models    LlmConnectionModel[]
+  executions LlmExecution[]
+
+  @@index([workspaceId, provider, status, poolEnabled])
+  @@index([ownerUserId])
+}
+
+model LlmConnectionModel {
+  id                 String   @id @default(uuid())
+  connectionId       String
+  model               String
+  enabled             Boolean  @default(true)
+  concurrencyLimit    Int?
+  supportsJsonSchema  Boolean  @default(false)
+  averageLatencyMs    Int?
+  successRate         Float?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  connection LlmConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, model])
+  @@index([model, enabled])
+}
+
+model LlmRoutingPolicy {
+  id                   String       @id @default(uuid())
+  workspaceId          String
+  taskType             LlmTaskType
+  mode                 RoutingMode  @default(CONSISTENCY_FIRST)
+  workspaceConcurrency Int          @default(20)
+  allowCrossProvider   Boolean      @default(true)
+  allowRuleFallback    Boolean      @default(true)
+  enabled              Boolean      @default(true)
+  version              Int          @default(1)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  routes    LlmModelRoute[]
+
+  @@unique([workspaceId, taskType, version])
+}
+
+model LlmModelRoute {
+  id         String      @id @default(uuid())
+  policyId   String
+  tier       Int
+  provider   LlmProvider
+  model      String
+  maxRetries Int         @default(1)
+  timeoutMs  Int         @default(60000)
+  enabled    Boolean     @default(true)
+
+  policy LlmRoutingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, tier, provider, model])
+  @@index([policyId, tier])
+}
+
+model LlmExecution {
+  id                    String          @id @default(uuid())
+  correlationId         String
+  workspaceId           String
+  connectionId          String?
+  connectionOwnerUserId String?
+  taskType              LlmTaskType
+  resourceType          String
+  resourceId            String
+  provider              LlmProvider
+  model                 String
+  routeTier             Int
+  accountAttempt        Int
+  status                ExecutionStatus
+  inputTokens           Int?
+  outputTokens          Int?
+  latencyMs             Int?
+  fallbackReason        String?
+  errorCode             String?
+  errorMessage          String?
+  createdAt             DateTime        @default(now())
+  completedAt           DateTime?
+
+  workspace  Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection LlmConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([correlationId])
+  @@index([workspaceId, taskType, createdAt])
+}
+
+model PostClassification {
+  id                 String        @id @default(uuid())
+  workspaceId        String
+  postId             String
+  correlationId      String
+  method             String
+  isBuyingSignal     Boolean
+  signalType         String
+  confidence         Float
+  buyingIntentScore  Int
+  urgencyScore       Int
+  fitScore           Int
+  priorityScore      Int
+  priorityLevel      PriorityLevel
+  summary            String
+  evidence           Json
+  provider           LlmProvider
+  model              String
+  createdAt          DateTime      @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  post      RedditPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  leads     Lead[]
+
+  @@index([workspaceId, priorityScore])
+}
+
+model Lead {
+  id               String        @id @default(uuid())
+  workspaceId      String
+  postId           String
+  classificationId String
+  status           LeadStatus    @default(NEW)
+  priorityScore    Int
+  priorityLevel    PriorityLevel
+  assignedToUserId String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  post           RedditPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  classification PostClassification @relation(fields: [classificationId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, postId])
+  @@index([workspaceId, status, priorityScore])
+}

@@ -1,0 +1,6 @@
+{
+  "nav": { "overview": "Overview", "leads": "Leads", "llm": "LLM Pool" },
+  "overview": { "title": "Buying signals, carefully ranked", "subtitle": "Scan Reddit, distribute work across multiple LLM accounts and move the best opportunities into one shared inbox.", "leads": "Open leads", "connections": "LLM connections", "workspace": "Workspace" },
+  "leads": { "title": "Lead Inbox", "empty": "No leads yet", "priority": "Priority", "signal": "Signal", "status": "Status", "source": "Source" },
+  "llm": { "title": "Shared LLM Pool", "subtitle": "Every member can contribute accounts; the router falls back across accounts, models and providers.", "account": "Account", "owner": "Owner", "health": "Health", "capacity": "Concurrency", "status": "Status" }
+}

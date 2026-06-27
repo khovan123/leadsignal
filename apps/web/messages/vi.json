@@ -1,0 +1,6 @@
+{
+  "nav": { "overview": "Tổng quan", "leads": "Leads", "llm": "Kho LLM" },
+  "overview": { "title": "Tín hiệu mua hàng, được chọn lọc", "subtitle": "Quét Reddit, phân phối tải qua nhiều tài khoản LLM và đưa lead tốt nhất vào một inbox chung.", "leads": "Lead đang mở", "connections": "Kết nối LLM", "workspace": "Workspace" },
+  "leads": { "title": "Lead Inbox", "empty": "Chưa có lead", "priority": "Ưu tiên", "signal": "Tín hiệu", "status": "Trạng thái", "source": "Nguồn" },
+  "llm": { "title": "Shared LLM Pool", "subtitle": "Mọi thành viên có thể đóng góp tài khoản; router tự fallback theo account, model và provider.", "account": "Tài khoản", "owner": "Chủ sở hữu", "health": "Sức khỏe", "capacity": "Song song", "status": "Trạng thái" }
+}
