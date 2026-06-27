@@ -1,5 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "module": "ESNext", "moduleResolution": "Bundler", "noEmit": true, "types": ["node"] },
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["node"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false
+  },
   "include": ["src/**/*.ts"]
 }
