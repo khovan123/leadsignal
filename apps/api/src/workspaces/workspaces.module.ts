@@ -1,6 +1,20 @@
 import { Module } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
-import { WorkspacesController } from './workspaces.controller';
-import { WorkspacesService } from './workspaces.service';
-@Module({controllers:[WorkspacesController],providers:[{provide:WorkspacesService,useFactory:(prisma:PrismaService)=>new WorkspacesService(prisma),inject:[PrismaService]}]})
+import { CqrsModule } from '@nestjs/cqrs';
+import { GetWorkspaceHandler } from './application/get-workspace.query';
+import { WORKSPACE_REPOSITORY } from './domain/workspace.repository';
+import { PrismaWorkspaceRepository } from './infrastructure/prisma-workspace.repository';
+import { WorkspacesController } from './presentation/workspaces.controller';
+
+@Module({
+  imports: [CqrsModule],
+  controllers: [WorkspacesController],
+  providers: [
+    GetWorkspaceHandler,
+    PrismaWorkspaceRepository,
+    {
+      provide: WORKSPACE_REPOSITORY,
+      useExisting: PrismaWorkspaceRepository,
+    },
+  ],
+})
 export class WorkspacesModule {}
