@@ -13,6 +13,7 @@ async function lsSaveConfig(payload) {
     apiBase: lsNormalizeUrl(payload.apiBase || LS_DEFAULT_CONFIG.apiBase, true),
     appOrigin: lsNormalizeUrl(payload.appOrigin || LS_DEFAULT_CONFIG.appOrigin, false),
   };
+  await lsEnsureHostPermissions(config);
   await chrome.storage.local.set({ [LS_KEYS.config]: config });
   await lsRegisterAppOrigin(config.appOrigin);
   return config;
@@ -46,11 +47,22 @@ async function lsApiFetch(config, path, init = {}) {
   }
 }
 
+async function lsEnsureHostPermissions(config) {
+  const origins = [...new Set([
+    lsOriginPattern(config.apiBase),
+    lsOriginPattern(config.appOrigin),
+  ])];
+  const granted = await chrome.permissions.contains({ origins });
+  if (granted) return;
+  const accepted = await chrome.permissions.request({ origins });
+  if (!accepted) throw new Error('Host permission is required for the LeadSignal API and app.');
+}
+
 async function lsRegisterAppOrigin(value) {
   if (!value) return;
   const url = new URL(value);
   if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
-  const pattern = `${url.protocol}//${url.hostname}/*`;
+  const pattern = lsOriginPattern(value);
   await chrome.scripting.unregisterContentScripts({ ids: ['leadsignal-app'] }).catch(() => undefined);
   await chrome.scripting.registerContentScripts([
     {
@@ -61,6 +73,11 @@ async function lsRegisterAppOrigin(value) {
       persistAcrossSessions: true,
     },
   ]);
+}
+
+function lsOriginPattern(value) {
+  const url = new URL(String(value));
+  return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}/*`;
 }
 
 function lsNormalizeUrl(value, keepPath) {
