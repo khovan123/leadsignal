@@ -5,6 +5,18 @@ export interface RedditPublicSource {
   type: string;
   subreddit: string | null;
   searchQuery: string | null;
+  enabled: boolean;
+  sort: string;
+  timeRange: string;
+  targetPostCount: number;
+  maxScrolls: number;
+  maxStallRounds: number;
+  includePromoted: boolean;
+  includePinned: boolean;
+  includeNsfw: boolean;
+  detailEnabled: boolean;
+  commentsTopN: number;
+  collectionMode: string;
 }
 
 export interface RedditPublicPost {
@@ -25,4 +37,11 @@ export interface RedditPublicCollectionResult {
   sources: number;
   posts: number;
   failures: Array<{ sourceId: string; message: string }>;
+  sourceResults?: Array<{
+    sourceId: string;
+    status: string;
+    collected: number;
+    requested: number;
+    message?: string;
+  }>;
 }
