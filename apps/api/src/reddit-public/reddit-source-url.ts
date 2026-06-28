@@ -6,6 +6,10 @@ const REDDIT_HOSTS = new Set([
   'old.reddit.com',
 ]);
 
+const SORTS = new Set(['hot', 'new', 'top', 'rising']);
+const SEARCH_SORTS = new Set(['relevance', 'hot', 'top', 'new', 'comments']);
+const TIME_RANGES = new Set(['hour', 'day', 'week', 'month', 'year', 'all']);
+
 export function resolvePublicRedditSourceUrl(
   source: RedditPublicSource,
   useOldReddit = false,
@@ -14,14 +18,30 @@ export function resolvePublicRedditSourceUrl(
   const type = source.type.trim().toUpperCase();
   const subreddit = source.subreddit?.trim().replace(/^r\//i, '');
   const query = source.searchQuery?.trim();
+  const sort = String(source.sort || 'NEW').toLowerCase();
+  const timeRange = String(source.timeRange || 'ALL').toLowerCase();
 
-  if (subreddit) {
-    return `https://${host}/r/${encodeURIComponent(subreddit)}/new/`;
+  if (type === 'FOLLOWING') {
+    throw new Error('FOLLOWING sources require the browser extension');
   }
 
-  if (type.includes('POPULAR')) return `https://${host}/r/popular/`;
-  if (type.includes('NEWS')) return `https://${host}/news/`;
-  if (type.includes('BEST')) return `https://${host}/best/`;
+  if (subreddit || type === 'SUBREDDIT') {
+    if (!subreddit) throw new Error(`Reddit source ${source.id} has no subreddit`);
+    const selectedSort = SORTS.has(sort) ? sort : 'new';
+    const url = new URL(
+      `https://${host}/r/${encodeURIComponent(subreddit)}/${selectedSort}/`,
+    );
+    if (selectedSort === 'top' && TIME_RANGES.has(timeRange)) {
+      url.searchParams.set('t', timeRange);
+    }
+    return url.href;
+  }
+
+  if (type === 'HOME') return `https://${host}/`;
+  if (type === 'POPULAR') return `https://${host}/r/popular/`;
+  if (type === 'NEWS') return `https://${host}/news/`;
+  if (type === 'BEST') return `https://${host}/best/`;
+  if (type === 'LATEST') return `https://${host}/new/`;
 
   if (query?.startsWith('http://') || query?.startsWith('https://')) {
     const url = new URL(query);
@@ -34,12 +54,14 @@ export function resolvePublicRedditSourceUrl(
     return url.href;
   }
 
-  if (query) {
+  if (query || type === 'SEARCH') {
+    if (!query) throw new Error(`Reddit source ${source.id} has no search query`);
     const url = new URL(`https://${host}/search/`);
     url.searchParams.set('q', query);
-    url.searchParams.set('sort', 'new');
+    url.searchParams.set('sort', SEARCH_SORTS.has(sort) ? sort : 'new');
+    if (TIME_RANGES.has(timeRange)) url.searchParams.set('t', timeRange);
     return url.href;
   }
 
-  throw new Error(`Reddit source ${source.id} has no subreddit or search query`);
+  throw new Error(`Reddit source ${source.id} has no supported configuration`);
 }
