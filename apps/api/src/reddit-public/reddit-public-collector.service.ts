@@ -3,6 +3,7 @@ import type { Browser, BrowserContext, Page } from 'playwright';
 import { chromium } from 'playwright';
 import { PrismaService } from '../database/prisma.service';
 import { QueueService } from '../queue/queue.service';
+import { enrichRedditPostDetails } from './reddit-detail-enricher';
 import {
   extractRedditCards,
   REDDIT_POST_SELECTOR,
@@ -354,7 +355,14 @@ export class RedditPublicCollectorService {
         ]);
       }
 
-      return [...posts.values()];
+      const collected = [...posts.values()];
+      if (!source.detailEnabled || collected.length === 0) return collected;
+      return enrichRedditPostDetails(
+        context,
+        collected,
+        source.commentsTopN,
+        positiveInteger(process.env.REDDIT_DETAIL_CONCURRENCY, 2),
+      );
     } finally {
       await page.close();
     }
@@ -410,6 +418,8 @@ export class RedditPublicCollectorService {
       commentCount: card.commentCount ?? 0,
       postedAt: Number.isNaN(postedAt.getTime()) ? new Date() : postedAt,
       mediaUrls: card.mediaUrls,
+      topComments: [],
+      detailFetched: false,
     };
   }
 
@@ -440,6 +450,15 @@ export class RedditPublicCollectorService {
         postedAt: record.postedAt,
       },
     });
+
+    await this.prisma.$executeRaw`
+      UPDATE "RedditPost"
+      SET
+        "mediaUrls"=${JSON.stringify(record.mediaUrls)}::jsonb,
+        "topComments"=${JSON.stringify(record.topComments)}::jsonb,
+        "detailFetchedAt"=${record.detailFetched ? new Date() : null}
+      WHERE id=${post.id}::uuid
+    `;
 
     const key = {
       workspaceId: source.workspaceId,
