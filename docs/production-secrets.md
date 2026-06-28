@@ -7,8 +7,10 @@ Production values must come from the deployment platform's encrypted secret stor
 - `DATABASE_URL` and `VALKEY_URL`: rotate when infrastructure credentials change or exposure is suspected.
 - `CREDENTIAL_ENCRYPTION_KEY`: a unique 32-byte key for each environment.
 - `JWT_ACCESS_SECRET`: at least 32 random characters; rotate every 90 days.
-- Reddit, GitHub and Google OAuth client secrets: rotate every 180 days or after exposure.
+- GitHub and Google OAuth client secrets: rotate every 180 days or after exposure.
 - `RESEND_API_KEY`: rotate every 180 days or after exposure.
+
+The Reddit collector does not require a Reddit OAuth client ID or client secret. Its `REDDIT_CRAWLER_*` values are runtime configuration rather than credentials.
 
 `NEXT_PUBLIC_API_URL` is public configuration. `INTERNAL_API_URL` is the private server-to-server API address used by Next.js.
 
@@ -19,7 +21,7 @@ Production values must come from the deployment platform's encrypted secret stor
 3. Run migrations as a one-shot job before deploying API and workers.
 4. Never expose repository or environment secrets to forked pull requests.
 5. Enable GitHub secret scanning and push protection.
-6. Redact Authorization headers, cookies, OAuth codes and refresh tokens from logs.
+6. Redact Authorization headers, OAuth codes and refresh tokens from logs.
 7. Encrypt database backups and test restoration regularly.
 
 ## JWT rotation
@@ -28,14 +30,14 @@ Access tokens expire after 15 minutes by default. Replace `JWT_ACCESS_SECRET` in
 
 ## Credential encryption-key rotation
 
-`CREDENTIAL_ENCRYPTION_KEY` protects Reddit and LLM credentials with AES-256-GCM. Replacing it without re-encrypting data makes stored credentials unreadable.
+`CREDENTIAL_ENCRYPTION_KEY` protects LLM and provider credentials with AES-256-GCM. Replacing it without re-encrypting data makes stored credentials unreadable.
 
-1. Pause API credential writes and worker collectors.
+1. Pause API credential writes and workers.
 2. Back up PostgreSQL.
 3. Supply the old key only to a short-lived maintenance process.
 4. Generate and stage the new 32-byte key.
-5. Re-encrypt the encrypted credential, IV and authentication-tag columns in `LlmConnection`, `RedditConnection` and `ProviderOAuthCredential`.
-6. Verify Reddit refresh and one request for every enabled provider.
+5. Re-encrypt the encrypted credential, IV and authentication-tag columns in `LlmConnection` and `ProviderOAuthCredential`.
+6. Verify one request for every enabled provider and verify the Reddit browser runtime starts.
 7. Roll API and workers with only the new key.
 8. Remove the old key from all secret stores and maintenance environments.
 
