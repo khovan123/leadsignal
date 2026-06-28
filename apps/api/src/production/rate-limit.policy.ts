@@ -12,6 +12,7 @@ export function resolveRateLimitPolicy(method: string, rawPath: string): RateLim
   if (verb === 'POST' && path.endsWith('/auth/extension/challenge')) return { id: 'device-challenge', limit: 60, windowSeconds: 60 };
   if (verb === 'POST' && path.endsWith('/auth/extension/verify')) return { id: 'device-verify', limit: 30, windowSeconds: 60 };
   if (verb === 'POST' && path.endsWith('/auth/extension/exchange')) return { id: 'device-exchange', limit: 30, windowSeconds: 60 };
+  if (verb === 'POST' && path.endsWith('/extension/source-settings')) return { id: 'device-source-settings', limit: 120, windowSeconds: 60 };
   if (verb === 'POST' && path.endsWith('/extension/ingest')) return { id: 'device-ingest', limit: 120, windowSeconds: 60 };
   if (verb === 'GET' && /\/connections\/[^/]+\/authorize$/.test(path)) return { id: 'oauth-authorize', limit: 20, windowSeconds: 600 };
   if (verb === 'POST' && /\/workspaces\/[^/]+\/invitations$/.test(path)) return { id: 'workspace-invite', limit: 30, windowSeconds: 3600 };
