@@ -13,8 +13,25 @@ import { IdentityModule } from './identity/identity.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { ProviderConnectionsModule } from './provider-connections/provider-connections.module';
 import { RedditPublicModule } from './reddit-public/reddit-public.module';
+import { RedditSourcesModule } from './reddit-sources/reddit-sources.module';
 
 @Module({
-  imports: [DatabaseModule, CryptoModule, QueueModule, ProductionModule, ExtensionAuthModule, RedditPublicModule, IdentityModule, InvitationsModule, ProviderConnectionsModule, HealthModule, WorkspacesModule, LlmModule, LeadsModule, PostsModule],
+  imports: [
+    DatabaseModule,
+    CryptoModule,
+    QueueModule,
+    ProductionModule,
+    ExtensionAuthModule,
+    RedditPublicModule,
+    RedditSourcesModule,
+    IdentityModule,
+    InvitationsModule,
+    ProviderConnectionsModule,
+    HealthModule,
+    WorkspacesModule,
+    LlmModule,
+    LeadsModule,
+    PostsModule,
+  ],
 })
 export class AppModule {}
