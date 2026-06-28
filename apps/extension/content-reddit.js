@@ -9,7 +9,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 function captureRenderedPosts(requestedLimit) {
-  const limit = Math.max(1, Math.min(Number(requestedLimit) || 50, 100));
+  const limit = Math.max(1, Math.min(Number(requestedLimit) || 50, 2000));
   const selector = 'shreddit-post,article[data-testid="post-container"],[data-testid="post-container"],.thing.link[data-fullname^="t3_"]';
   const posts = [];
   const seen = new Set();
@@ -21,20 +21,50 @@ function captureRenderedPosts(requestedLimit) {
     posts.push(post);
   }
   const current = new URL(location.href);
-  const subreddit = current.pathname.match(/^\/r\/([^/]+)/i)?.[1];
-  let type = subreddit ? 'SUBREDDIT' : 'HOME';
-  if (/^\/r\/popular/i.test(current.pathname)) type = 'POPULAR';
-  else if (/^\/news/i.test(current.pathname)) type = 'NEWS';
-  else if (/^\/best/i.test(current.pathname) || /^\/posts\//i.test(current.pathname)) type = 'BEST';
+  const source = detectSource(current);
   return {
-    source: {
-      type,
-      name: subreddit ? `r/${subreddit}` : `${type} browser feed`,
-      subreddit,
-      url: current.href,
-    },
+    source,
     posts,
     capturedAt: new Date().toISOString(),
+  };
+}
+
+function detectSource(current) {
+  const path = current.pathname;
+  if (/^\/r\/popular(?:\/|$)/i.test(path)) {
+    return { type: 'POPULAR', name: 'Reddit Popular' };
+  }
+  if (/^\/news(?:\/|$)/i.test(path)) {
+    return { type: 'NEWS', name: 'Reddit News' };
+  }
+  if (/^\/(?:best|posts)(?:\/|$)/i.test(path)) {
+    return { type: 'BEST', name: 'Reddit Best' };
+  }
+  if (/^\/new(?:\/|$)/i.test(path)) {
+    return { type: 'LATEST', name: 'Reddit Latest' };
+  }
+  if (/^\/search(?:\/|$)/i.test(path)) {
+    return {
+      type: 'SEARCH',
+      name: 'Reddit Search',
+      searchQuery: current.searchParams.get('q') || undefined,
+    };
+  }
+  const subreddit = path.match(/^\/r\/([^/]+)/i)?.[1];
+  if (subreddit) {
+    return {
+      type: 'SUBREDDIT',
+      name: `r/${subreddit}`,
+      subreddit,
+    };
+  }
+  if (path === '/' || /^\/(?:home)?$/i.test(path)) {
+    return { type: 'FOLLOWING', name: 'Reddit Following' };
+  }
+  return {
+    type: 'CUSTOM_URL',
+    name: 'Reddit browser URL',
+    url: current.href,
   };
 }
 
