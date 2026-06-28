@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LeadSignal Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="card">
+      <p class="eyebrow">LeadSignal Extension</p>
+      <h1>Connection settings</h1>
+      <p class="muted">Configure the API and app addresses used for pairing, login, and signed post ingestion.</p>
+      <form id="settings-form">
+        <label>API base URL<input id="api-base" type="url" required></label>
+        <label>LeadSignal app origin<input id="app-origin" type="url" required></label>
+        <div class="actions">
+          <button type="submit">Save settings</button>
+          <button id="reset-button" type="button" class="secondary">Use local defaults</button>
+        </div>
+      </form>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <p class="note">Reload the LeadSignal login page after changing the app origin.</p>
+    </section>
+  </main>
+  <script src="crypto.js"></script>
+  <script src="api.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
