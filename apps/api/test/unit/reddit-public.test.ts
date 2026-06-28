@@ -11,33 +11,76 @@ function source(overrides: Partial<RedditPublicSource>): RedditPublicSource {
     type: 'SUBREDDIT',
     subreddit: null,
     searchQuery: null,
+    enabled: true,
+    sort: 'NEW',
+    timeRange: 'ALL',
+    targetPostCount: 50,
+    maxScrolls: 20,
+    maxStallRounds: 4,
+    includePromoted: false,
+    includePinned: false,
+    includeNsfw: false,
+    detailEnabled: true,
+    commentsTopN: 0,
+    collectionMode: 'PUBLIC',
     ...overrides,
   };
 }
 
-test('resolves subreddit sources to the new listing', () => {
+test('resolves subreddit sources with configured sort', () => {
   assert.equal(
-    resolvePublicRedditSourceUrl(source({ subreddit: 'r/SaaS' })),
-    'https://www.reddit.com/r/SaaS/new/',
+    resolvePublicRedditSourceUrl(
+      source({ subreddit: 'r/SaaS', sort: 'HOT' }),
+    ),
+    'https://www.reddit.com/r/SaaS/hot/',
   );
 });
 
-test('supports old Reddit fallback for subreddit sources', () => {
-  assert.equal(
-    resolvePublicRedditSourceUrl(source({ subreddit: 'startups' }), true),
-    'https://old.reddit.com/r/startups/new/',
-  );
-});
-
-test('resolves plain queries through Reddit public search', () => {
+test('supports old Reddit fallback and top time ranges', () => {
   const url = new URL(
     resolvePublicRedditSourceUrl(
-      source({ type: 'SEARCH', searchQuery: 'looking for CRM' }),
+      source({ subreddit: 'startups', sort: 'TOP', timeRange: 'WEEK' }),
+      true,
+    ),
+  );
+  assert.equal(url.origin, 'https://old.reddit.com');
+  assert.equal(url.pathname, '/r/startups/top/');
+  assert.equal(url.searchParams.get('t'), 'week');
+});
+
+test('resolves built-in home and latest feeds', () => {
+  assert.equal(
+    resolvePublicRedditSourceUrl(source({ type: 'HOME' })),
+    'https://www.reddit.com/',
+  );
+  assert.equal(
+    resolvePublicRedditSourceUrl(source({ type: 'LATEST' })),
+    'https://www.reddit.com/new/',
+  );
+});
+
+test('resolves plain queries with sort and time range', () => {
+  const url = new URL(
+    resolvePublicRedditSourceUrl(
+      source({
+        type: 'SEARCH',
+        searchQuery: 'looking for CRM',
+        sort: 'TOP',
+        timeRange: 'MONTH',
+      }),
     ),
   );
   assert.equal(url.pathname, '/search/');
   assert.equal(url.searchParams.get('q'), 'looking for CRM');
-  assert.equal(url.searchParams.get('sort'), 'new');
+  assert.equal(url.searchParams.get('sort'), 'top');
+  assert.equal(url.searchParams.get('t'), 'month');
+});
+
+test('marks following as extension-only', () => {
+  assert.throws(
+    () => resolvePublicRedditSourceUrl(source({ type: 'FOLLOWING' })),
+    /require the browser extension/,
+  );
 });
 
 test('rejects custom URLs outside Reddit', () => {
