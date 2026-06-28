@@ -1,4 +1,4 @@
-import { Inject } from '@nestjs/common';
+import { BadRequestException, Inject, NotFoundException } from '@nestjs/common';
 import {
   CommandHandler,
   ICommandHandler,
@@ -14,6 +14,13 @@ import {
 
 export class ListRedditSourcesQuery {
   constructor(readonly workspaceId: string) {}
+}
+
+export class GetRedditCollectionJobQuery {
+  constructor(
+    readonly workspaceId: string,
+    readonly jobId: string,
+  ) {}
 }
 
 export class CreateRedditSourceCommand {
@@ -60,6 +67,19 @@ export class ListRedditSourcesHandler
 
   execute(query: ListRedditSourcesQuery) {
     return this.repository.list(query.workspaceId);
+  }
+}
+
+@QueryHandler(GetRedditCollectionJobQuery)
+export class GetRedditCollectionJobHandler
+  implements IQueryHandler<GetRedditCollectionJobQuery>
+{
+  constructor(@Inject(QueueService) private readonly queue: QueueService) {}
+
+  async execute(query: GetRedditCollectionJobQuery) {
+    const job = await this.queue.getRedditCollectionJob(query.jobId);
+    if (!job) throw new NotFoundException('Reddit collection job not found');
+    return job;
   }
 }
 
@@ -128,10 +148,10 @@ export class RunRedditSourcesHandler
     if (command.sourceIds?.length) {
       const sources = await this.repository.list(command.workspaceId);
       const allowed = new Set(sources.map((source) => source.id));
-      for (const sourceId of command.sourceIds) {
-        if (!allowed.has(sourceId)) {
-          throw new Error('One or more Reddit sources do not belong to the workspace');
-        }
+      if (command.sourceIds.some((sourceId) => !allowed.has(sourceId))) {
+        throw new BadRequestException(
+          'One or more Reddit sources do not belong to the workspace',
+        );
       }
     }
     const job = await this.queue.enqueueRedditCollection(
@@ -144,6 +164,7 @@ export class RunRedditSourcesHandler
 
 export const REDDIT_SOURCE_HANDLERS = [
   ListRedditSourcesHandler,
+  GetRedditCollectionJobHandler,
   CreateRedditSourceHandler,
   UpdateRedditSourceHandler,
   DeleteRedditSourceHandler,
