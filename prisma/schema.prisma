@@ -78,8 +78,10 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  memberships    WorkspaceMember[]
-  llmConnections LlmConnection[]
+  memberships                 WorkspaceMember[]
+  llmConnections              LlmConnection[]
+  extensionDevices            ExtensionDevice[]
+  extensionPairingCodesCreated ExtensionPairingCode[] @relation("ExtensionPairingInviter")
 }
 
 model Workspace {
@@ -91,14 +93,16 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members         WorkspaceMember[]
-  sources         RedditSource[]
-  discoveries     PostDiscovery[]
-  llmConnections  LlmConnection[]
-  routingPolicies LlmRoutingPolicy[]
-  classifications PostClassification[]
-  leads           Lead[]
-  executions      LlmExecution[]
+  members               WorkspaceMember[]
+  sources               RedditSource[]
+  discoveries           PostDiscovery[]
+  llmConnections        LlmConnection[]
+  routingPolicies       LlmRoutingPolicy[]
+  classifications       PostClassification[]
+  leads                 Lead[]
+  executions            LlmExecution[]
+  extensionDevices      ExtensionDevice[]
+  extensionPairingCodes ExtensionPairingCode[]
 }
 
 model WorkspaceMember {
@@ -112,6 +116,84 @@ model WorkspaceMember {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
+}
+
+model ExtensionPairingCode {
+  id              String        @id @default(uuid())
+  workspaceId     String
+  invitedByUserId String?
+  tokenHash       String        @unique
+  role            WorkspaceRole @default(MEMBER)
+  displayName     String?
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy User?     @relation("ExtensionPairingInviter", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, expiresAt])
+}
+
+model ExtensionDevice {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  userId         String
+  publicKeyJwk   Json
+  label          String
+  redditUsername String?
+  status         String   @default("ACTIVE")
+  lastSeenAt     DateTime?
+  createdAt      DateTime @default(now())
+  revokedAt      DateTime?
+
+  workspace  Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user       User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenges ExtensionAuthChallenge[]
+  tickets    ExtensionLoginTicket[]
+  nonces     ExtensionReplayNonce[]
+
+  @@index([workspaceId, status])
+  @@index([userId, status])
+}
+
+model ExtensionAuthChallenge {
+  id        String   @id @default(uuid())
+  deviceId  String
+  nonceHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  device ExtensionDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, expiresAt])
+}
+
+model ExtensionLoginTicket {
+  id        String   @id @default(uuid())
+  deviceId  String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  device ExtensionDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, expiresAt])
+}
+
+model ExtensionReplayNonce {
+  id        String   @id @default(uuid())
+  deviceId  String
+  nonceHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  device ExtensionDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, nonceHash])
+  @@index([expiresAt])
 }
 
 model RedditSource {
@@ -149,10 +231,10 @@ model RedditPost {
 }
 
 model PostDiscovery {
-  id          String   @id @default(uuid())
-  workspaceId String
-  postId      String
-  sourceId    String
+  id           String   @id @default(uuid())
+  workspaceId  String
+  postId       String
+  sourceId     String
   discoveredAt DateTime @default(now())
 
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
