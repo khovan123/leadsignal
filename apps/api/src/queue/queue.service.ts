@@ -21,11 +21,12 @@ export class QueueService implements OnModuleDestroy {
   });
 
   enqueueClassification(workspaceId: string, postId: string) {
+    const safeKey = `${workspaceId}-${postId}`;
     return this.classification.add(
       'classify-post',
       { workspaceId, postId },
       {
-        jobId: `${workspaceId}:${postId}`,
+        jobId: safeKey,
         attempts: 4,
         backoff: { type: 'exponential', delay: 30_000 },
         removeOnComplete: 1_000,
