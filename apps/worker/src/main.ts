@@ -8,7 +8,7 @@ import {
   EmailOutboxService,
   LlmPoolRouterService,
   PrismaService,
-  ProductionService,
+  RedditPublicCollectorService,
 } from '@leadsignal/api';
 
 function createValkeyConnection() {
@@ -30,7 +30,7 @@ async function bootstrap() {
   });
   const prisma = app.get(PrismaService);
   const router = app.get(LlmPoolRouterService);
-  const production = app.get(ProductionService);
+  const redditCollector = app.get(RedditPublicCollectorService);
   const emailOutbox = app.get(EmailOutboxService);
   const workerId = randomUUID();
 
@@ -117,10 +117,10 @@ async function bootstrap() {
     if (acquired[0]?.ownerId !== workerId) return;
 
     try {
-      const result = await production.collectReddit();
-      console.log('Reddit collector completed', result);
+      const result = await redditCollector.collect();
+      console.log('Reddit public crawler completed', result);
     } catch (error) {
-      console.error('Reddit collector failed', error);
+      console.error('Reddit public crawler failed', error);
     }
   };
 
