@@ -1,1 +1,0 @@
-Device authentication validation trigger.
