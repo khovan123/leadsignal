@@ -17,12 +17,13 @@ const FORBIDDEN_CREDENTIAL_KEYS = new Set([
 ]);
 
 export interface ExtensionPublicJwk {
+  [key: string]: string | boolean | string[];
   kty: 'EC';
   crv: 'P-256';
   x: string;
   y: string;
-  ext?: boolean;
-  key_ops?: string[];
+  ext: boolean;
+  key_ops: string[];
 }
 
 export function validateExtensionPublicKey(value: unknown): ExtensionPublicJwk {
@@ -65,7 +66,7 @@ export function verifyExtensionSignature(
   if (signatureBytes.length !== 64) {
     throw new UnauthorizedException('Malformed extension signature');
   }
-  const key = createPublicKey({ key: jwk as JsonWebKey, format: 'jwk' });
+  const key = createPublicKey({ key: jwk as any, format: 'jwk' });
   const valid = verifySignature(
     'sha256',
     Buffer.from(message, 'utf8'),
