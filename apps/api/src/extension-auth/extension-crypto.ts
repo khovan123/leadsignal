@@ -7,8 +7,8 @@ const FORBIDDEN_CREDENTIAL_KEYS = new Set([
   'cookies',
   'localstorage',
   'sessionstorage',
-  'reddit_session',
-  'session_tracker',
+  'redditsession',
+  'sessiontracker',
   'loid',
   'token',
   'accesstoken',
@@ -65,7 +65,7 @@ export function verifyExtensionSignature(
   if (signatureBytes.length !== 64) {
     throw new UnauthorizedException('Malformed extension signature');
   }
-  const key = createPublicKey({ key: jwk, format: 'jwk' });
+  const key = createPublicKey({ key: jwk as JsonWebKey, format: 'jwk' });
   const valid = verifySignature(
     'sha256',
     Buffer.from(message, 'utf8'),
