@@ -58,6 +58,7 @@ export class QueueService implements OnModuleDestroy {
     const state = await job.getState();
     return {
       id: String(job.id),
+      workspaceId: String(job.data?.workspaceId ?? ''),
       state,
       progress: job.progress,
       result: job.returnvalue,
