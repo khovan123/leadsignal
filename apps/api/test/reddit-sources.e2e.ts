@@ -22,7 +22,7 @@ async function request(path: string, init: RequestInit = {}) {
   const response = await fetch(`${baseUrl}/api${path}`, {
     ...init,
     headers: {
-      'content-type': 'application/json',
+      ...(init.body ? { 'content-type': 'application/json' } : {}),
       ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
       ...(init.headers ?? {}),
     },
