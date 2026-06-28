@@ -30,6 +30,8 @@ export interface RedditPublicPost {
   commentCount: number;
   postedAt: Date;
   mediaUrls: string[];
+  topComments: string[];
+  detailFetched: boolean;
 }
 
 export interface RedditPublicCollectionResult {
