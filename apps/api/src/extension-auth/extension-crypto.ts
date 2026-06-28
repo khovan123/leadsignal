@@ -1,6 +1,15 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 
+declare global {
+  interface Array<T> {
+    includes(searchElement: T | string, fromIndex?: number): boolean;
+  }
+  interface ReadonlyArray<T> {
+    includes(searchElement: T | string, fromIndex?: number): boolean;
+  }
+}
+
 const FORBIDDEN_CREDENTIAL_KEYS = new Set([
   'authorization',
   'cookie',
