@@ -78,7 +78,9 @@ export class GetRedditCollectionJobHandler
 
   async execute(query: GetRedditCollectionJobQuery) {
     const job = await this.queue.getRedditCollectionJob(query.jobId);
-    if (!job) throw new NotFoundException('Reddit collection job not found');
+    if (!job || job.workspaceId !== query.workspaceId) {
+      throw new NotFoundException('Reddit collection job not found');
+    }
     return job;
   }
 }
