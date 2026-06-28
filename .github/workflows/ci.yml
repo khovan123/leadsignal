@@ -58,7 +58,18 @@ jobs:
       - run: pnpm install --frozen-lockfile=false
       - run: pnpm db:generate
       - run: pnpm db:deploy
-      - run: pnpm build
+      - name: Run build
+        id: build
+        continue-on-error: true
+        run: pnpm build > build.log 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
+      - name: Fail when build failed
+        if: ${{ steps.build.outcome == 'failure' }}
+        run: exit 1
       - run: pnpm test
       - name: Run E2E
         id: e2e
