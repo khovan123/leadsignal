@@ -5,11 +5,12 @@ import { after, before, test } from 'node:test';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/database/prisma.service';
 import {
   ingestionSigningMessage,
   loginSigningMessage,
 } from '../src/extension-auth/extension-crypto';
-import { PrismaService } from '../src/database/prisma.service';
+import { sourceConfigSigningMessage } from '../src/reddit-sources/application/extension-source-config.service';
 
 process.env.EXTENSION_BOOTSTRAP_CODE = 'extension-e2e-bootstrap';
 process.env.JWT_ACCESS_SECRET ??=
@@ -57,7 +58,7 @@ after(async () => {
   await app.close();
 });
 
-test('extension device authenticates, exchanges one-time ticket and ingests once', async () => {
+test('extension device syncs source settings, authenticates and ingests once', async () => {
   const { privateKey, publicKey } = generateKeyPairSync('ec', {
     namedCurve: 'prime256v1',
   });
@@ -112,6 +113,70 @@ test('extension device authenticates, exchanges one-time ticket and ingests once
   assert.ok(exchanged.body.refreshToken);
   assert.equal(exchanged.body.user.workspaceId, paired.body.workspaceId);
 
+  const source = await request(
+    `/workspaces/${paired.body.workspaceId}/reddit-sources`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${exchanged.body.accessToken}` },
+      body: JSON.stringify({
+        type: 'SUBREDDIT',
+        name: 'r/SaaS synced source',
+        subreddit: 'SaaS',
+        targetPostCount: 77,
+        maxScrolls: 31,
+        maxStallRounds: 6,
+        includePromoted: true,
+        includePinned: true,
+        includeNsfw: false,
+        detailEnabled: true,
+        commentsTopN: 8,
+        collectionMode: 'EXTENSION',
+        enabled: true,
+      }),
+    },
+  );
+  assert.equal(source.response.status, 201);
+
+  const context = {
+    type: 'SUBREDDIT',
+    subreddit: 'SaaS',
+    url: 'https://www.reddit.com/r/SaaS/new/',
+  };
+  const configTimestamp = new Date().toISOString();
+  const configNonce = `source-config-${Date.now()}-123456`;
+  const configProof = sign(
+    'sha256',
+    Buffer.from(
+      sourceConfigSigningMessage(configTimestamp, configNonce, context),
+    ),
+    { key: privateKey, dsaEncoding: 'ieee-p1363' },
+  ).toString('base64url');
+  const sourceSettingsPayload = {
+    deviceId: paired.body.deviceId,
+    timestamp: configTimestamp,
+    nonce: configNonce,
+    proof: configProof,
+    context,
+  };
+
+  const sourceSettings = await request('/extension/source-settings', {
+    method: 'POST',
+    body: JSON.stringify(sourceSettingsPayload),
+  });
+  assert.equal(sourceSettings.response.status, 201);
+  assert.equal(sourceSettings.body.sourceId, source.body.id);
+  assert.equal(sourceSettings.body.source.targetPostCount, 77);
+  assert.equal(sourceSettings.body.source.maxScrolls, 31);
+  assert.equal(sourceSettings.body.source.maxStallRounds, 6);
+  assert.equal(sourceSettings.body.source.includePromoted, true);
+  assert.equal(sourceSettings.body.source.commentsTopN, 8);
+
+  const configReplay = await request('/extension/source-settings', {
+    method: 'POST',
+    body: JSON.stringify(sourceSettingsPayload),
+  });
+  assert.equal(configReplay.response.status, 409);
+
   const ticketReplay = await request('/auth/extension/exchange', {
     method: 'POST',
     body: JSON.stringify({ ticket: verified.body.ticket }),
@@ -121,6 +186,7 @@ test('extension device authenticates, exchanges one-time ticket and ingests once
   const suffix = Date.now().toString(36);
   const batch = {
     source: {
+      sourceId: source.body.id,
       type: 'SUBREDDIT',
       name: 'r/SaaS extension E2E',
       subreddit: 'SaaS',
@@ -163,6 +229,7 @@ test('extension device authenticates, exchanges one-time ticket and ingests once
   assert.equal(ingested.response.status, 201);
   assert.equal(ingested.body.accepted, 1);
   assert.equal(ingested.body.discovered, 1);
+  assert.equal(ingested.body.sourceId, source.body.id);
 
   const replay = await request('/extension/ingest', {
     method: 'POST',

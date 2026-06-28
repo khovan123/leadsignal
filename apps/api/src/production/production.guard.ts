@@ -10,9 +10,9 @@ export class ProductionAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<any>();
     const path = request.url?.split('?')[0] ?? '';
     const publicPrefix = path.startsWith('/api/auth/extension/');
-    const publicIngestion = path === '/api/extension/ingest';
+    const publicDeviceRoute = path === '/api/extension/ingest' || path === '/api/extension/source-settings';
     const existingPublic = /^\/api\/(health|auth\/(register|login|refresh)|connections\/[^/]+\/complete)/.test(path);
-    if (publicPrefix || publicIngestion || existingPublic) return true;
+    if (publicPrefix || publicDeviceRoute || existingPublic) return true;
 
     const authorization = request.headers?.authorization as string | undefined;
     if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Bearer access token is required');
