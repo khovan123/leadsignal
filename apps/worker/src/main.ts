@@ -33,6 +33,7 @@ async function bootstrap() {
   const redditCollector = app.get(RedditPublicCollectorService);
   const emailOutbox = app.get(EmailOutboxService);
   const workerId = randomUUID();
+  const connection = createValkeyConnection();
 
   const worker = new Worker(
     'post-classification',
@@ -95,8 +96,32 @@ async function bootstrap() {
       };
     },
     {
-      connection: createValkeyConnection(),
+      connection,
       concurrency: Number(process.env.WORKER_CONCURRENCY ?? 20),
+    },
+  );
+
+  const redditWorker = new Worker(
+    'reddit-collection',
+    async (job) => {
+      const { workspaceId, sourceIds } = job.data as {
+        workspaceId: string;
+        sourceIds?: string[];
+      };
+      await job.updateProgress({ status: 'RUNNING' });
+      const result = await redditCollector.collect({ workspaceId, sourceIds });
+      await job.updateProgress({
+        status: 'COMPLETED',
+        sources: result.sourceResults,
+      });
+      return result;
+    },
+    {
+      connection,
+      concurrency: Math.max(
+        1,
+        Number(process.env.REDDIT_COLLECTION_CONCURRENCY ?? 1),
+      ),
     },
   );
 
@@ -157,7 +182,7 @@ async function bootstrap() {
   const stop = async () => {
     clearInterval(collectorInterval);
     clearInterval(emailInterval);
-    await worker.close();
+    await Promise.all([worker.close(), redditWorker.close()]);
     await app.close();
     process.exit(0);
   };

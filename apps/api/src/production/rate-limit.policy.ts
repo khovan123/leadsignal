@@ -16,5 +16,7 @@ export function resolveRateLimitPolicy(method: string, rawPath: string): RateLim
   if (verb === 'GET' && /\/connections\/[^/]+\/authorize$/.test(path)) return { id: 'oauth-authorize', limit: 20, windowSeconds: 600 };
   if (verb === 'POST' && /\/workspaces\/[^/]+\/invitations$/.test(path)) return { id: 'workspace-invite', limit: 30, windowSeconds: 3600 };
   if (verb === 'POST' && /\/workspaces\/[^/]+\/extension-devices\/pairing-codes$/.test(path)) return { id: 'device-code', limit: 20, windowSeconds: 3600 };
+  if (verb === 'POST' && /\/workspaces\/[^/]+\/reddit-sources\/run$/.test(path)) return { id: 'reddit-source-run', limit: 10, windowSeconds: 600 };
+  if (['POST', 'PATCH', 'DELETE'].includes(verb) && /\/workspaces\/[^/]+\/reddit-sources(?:\/[^/]+)?$/.test(path)) return { id: 'reddit-source-write', limit: 60, windowSeconds: 3600 };
   return DEFAULT_POLICY;
 }
