@@ -20,6 +20,10 @@ export class QueueService implements OnModuleDestroy {
     connection: createValkeyConnection(),
   });
 
+  readonly redditCollection = new Queue('reddit-collection', {
+    connection: createValkeyConnection(),
+  });
+
   enqueueClassification(workspaceId: string, postId: string) {
     const safeKey = `${workspaceId}-${postId}`;
     return this.classification.add(
@@ -35,7 +39,38 @@ export class QueueService implements OnModuleDestroy {
     );
   }
 
+  enqueueRedditCollection(workspaceId: string, sourceIds?: string[]) {
+    return this.redditCollection.add(
+      'collect-reddit-sources',
+      { workspaceId, sourceIds: sourceIds?.length ? sourceIds : undefined },
+      {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 15_000 },
+        removeOnComplete: 500,
+        removeOnFail: 1_000,
+      },
+    );
+  }
+
+  async getRedditCollectionJob(jobId: string) {
+    const job = await this.redditCollection.getJob(jobId);
+    if (!job) return null;
+    const state = await job.getState();
+    return {
+      id: String(job.id),
+      state,
+      progress: job.progress,
+      result: job.returnvalue,
+      failedReason: job.failedReason || null,
+      createdAt: new Date(job.timestamp),
+      finishedAt: job.finishedOn ? new Date(job.finishedOn) : null,
+    };
+  }
+
   async onModuleDestroy(): Promise<void> {
-    await this.classification.close();
+    await Promise.all([
+      this.classification.close(),
+      this.redditCollection.close(),
+    ]);
   }
 }
