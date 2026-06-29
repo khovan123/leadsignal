@@ -169,20 +169,28 @@ export class RunRedditSourcesHandler
       command.workspaceId,
       command.userId,
     );
+    const allowed = new Set(sources.map((source) => source.id));
 
-    if (command.sourceIds?.length) {
-      const allowed = new Set(sources.map((source) => source.id));
-      if (command.sourceIds.some((sourceId) => !allowed.has(sourceId))) {
-        throw new BadRequestException(
-          'One or more Reddit sources do not belong to the current member',
-        );
-      }
+    if (
+      command.sourceIds?.length &&
+      command.sourceIds.some((sourceId) => !allowed.has(sourceId))
+    ) {
+      throw new BadRequestException(
+        'One or more Reddit sources do not belong to the current member',
+      );
+    }
+
+    const sourceIds = command.sourceIds?.length
+      ? command.sourceIds
+      : sources.map((source) => source.id);
+    if (sourceIds.length === 0) {
+      throw new BadRequestException('No Reddit sources are configured for this member');
     }
 
     const job = await this.queue.enqueueRedditCollection(
       command.workspaceId,
       command.userId,
-      command.sourceIds,
+      sourceIds,
     );
     return { jobId: String(job.id), status: 'QUEUED' };
   }
