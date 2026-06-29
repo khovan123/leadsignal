@@ -187,7 +187,7 @@ export async function createExtensionPairingCodeAction() {
       };
     }
 
-    const result = await api<{ pairingCode: string }>(
+    const result = await api<{ code: string }>(
       `/workspaces/${workspaceId}/extension-devices/pairing-codes`,
       {
         method: 'POST',
@@ -198,7 +198,16 @@ export async function createExtensionPairingCodeAction() {
         }),
       },
     );
-    return { ok: true, pairingCode: result.pairingCode };
+
+    if (!result.code) {
+      return {
+        ok: false,
+        code: 'PAIRING_RESPONSE_INVALID',
+        error: 'The API did not return a pairing code.',
+      };
+    }
+
+    return { ok: true, pairingCode: result.code };
   } catch (error) {
     return {
       ok: false,
