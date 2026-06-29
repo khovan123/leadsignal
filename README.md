@@ -91,6 +91,8 @@ pnpm db:seed
 pnpm dev
 ```
 
+The API `dev` script now runs `pnpm db:generate` and `pnpm db:deploy` before starting the watch process. After pulling code that contains a new migration, stop and restart `pnpm dev`; pending migrations are applied before the API accepts requests. Use `pnpm --filter @leadsignal/api dev:watch` only when intentionally skipping this migration check.
+
 Generate environment secrets:
 
 ```bash
