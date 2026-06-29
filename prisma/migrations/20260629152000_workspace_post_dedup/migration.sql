@@ -1,4 +1,4 @@
--- Keep one discovery row per workspace/post. Source is optional provenance only.
+-- Keep one discovery row per workspace/post.
 WITH ranked_discoveries AS (
   SELECT
     id,
@@ -15,19 +15,41 @@ WHERE target.id = ranked.id
 
 DROP INDEX IF EXISTS "PostDiscovery_workspaceId_postId_sourceId_key";
 
-ALTER TABLE "PostDiscovery"
-  DROP CONSTRAINT IF EXISTS "PostDiscovery_sourceId_fkey";
-
-ALTER TABLE "PostDiscovery"
-  ALTER COLUMN "sourceId" DROP NOT NULL;
-
-ALTER TABLE "PostDiscovery"
-  ADD CONSTRAINT "PostDiscovery_sourceId_fkey"
-  FOREIGN KEY ("sourceId") REFERENCES "RedditSource"("id")
-  ON DELETE SET NULL ON UPDATE CASCADE;
-
 CREATE UNIQUE INDEX "PostDiscovery_workspaceId_postId_key"
   ON "PostDiscovery"("workspaceId", "postId");
+
+CREATE UNIQUE INDEX "PostDiscovery_workspaceId_postId_sourceId_key"
+  ON "PostDiscovery"("workspaceId", "postId", "sourceId");
+
+-- Existing application upserts target the old source-scoped key. Normalize the
+-- incoming source to the canonical workspace discovery before conflict handling.
+CREATE OR REPLACE FUNCTION "normalizePostDiscoverySource"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  canonical_source UUID;
+BEGIN
+  SELECT "sourceId"
+  INTO canonical_source
+  FROM "PostDiscovery"
+  WHERE "workspaceId" = NEW."workspaceId"
+    AND "postId" = NEW."postId"
+  LIMIT 1;
+
+  IF canonical_source IS NOT NULL THEN
+    NEW."sourceId" := canonical_source;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS "PostDiscovery_normalize_source" ON "PostDiscovery";
+CREATE TRIGGER "PostDiscovery_normalize_source"
+BEFORE INSERT ON "PostDiscovery"
+FOR EACH ROW
+EXECUTE FUNCTION "normalizePostDiscoverySource"();
 
 -- Keep the newest classification per workspace/post and preserve lead references.
 WITH ranked_classifications AS (
