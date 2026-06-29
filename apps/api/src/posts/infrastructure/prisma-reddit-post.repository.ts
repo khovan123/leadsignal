@@ -12,6 +12,7 @@ export class PrismaRedditPostRepository implements RedditPostRepository {
 
   async ingest(
     workspaceId: string,
+    userId: string,
     input: IngestRedditPostInput,
   ): Promise<IngestedPost> {
     return this.prisma.$transaction(async (tx) => {
@@ -21,6 +22,7 @@ export class PrismaRedditPostRepository implements RedditPostRepository {
         create: {
           id: input.sourceId,
           workspaceId,
+          ownerUserId: userId,
           name: 'Manual ingest',
           type: 'MANUAL',
         },

@@ -10,6 +10,7 @@ import {
 export class IngestPostCommand {
   constructor(
     readonly workspaceId: string,
+    readonly userId: string,
     readonly payload: Record<string, unknown>,
   ) {}
 }
@@ -58,7 +59,11 @@ export class IngestPostHandler implements ICommandHandler<IngestPostCommand> {
 
   async execute(command: IngestPostCommand) {
     const input = parseInput(command.payload);
-    const { postId } = await this.posts.ingest(command.workspaceId, input);
+    const { postId } = await this.posts.ingest(
+      command.workspaceId,
+      command.userId,
+      input,
+    );
     const job = await this.queue.enqueueClassification(
       command.workspaceId,
       postId,

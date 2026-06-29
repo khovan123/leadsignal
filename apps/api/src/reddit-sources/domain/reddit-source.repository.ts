@@ -38,6 +38,7 @@ export type RedditCollectionMode = 'PUBLIC' | 'EXTENSION';
 export interface RedditSourceConfiguration {
   id: string;
   workspaceId: string;
+  ownerUserId: string;
   name: string;
   type: RedditSourceType;
   subreddit: string | null;
@@ -82,14 +83,26 @@ export interface SaveRedditSourceInput {
 }
 
 export interface IRedditSourceRepository {
-  list(workspaceId: string): Promise<RedditSourceConfiguration[]>;
-  get(workspaceId: string, sourceId: string): Promise<RedditSourceConfiguration | null>;
-  create(workspaceId: string, input: SaveRedditSourceInput): Promise<RedditSourceConfiguration>;
+  list(
+    workspaceId: string,
+    userId: string,
+  ): Promise<RedditSourceConfiguration[]>;
+  get(
+    workspaceId: string,
+    userId: string,
+    sourceId: string,
+  ): Promise<RedditSourceConfiguration | null>;
+  create(
+    workspaceId: string,
+    userId: string,
+    input: SaveRedditSourceInput,
+  ): Promise<RedditSourceConfiguration>;
   update(
     workspaceId: string,
+    userId: string,
     sourceId: string,
     input: SaveRedditSourceInput,
   ): Promise<RedditSourceConfiguration>;
-  remove(workspaceId: string, sourceId: string): Promise<void>;
-  assertCanManage(workspaceId: string, userId: string): Promise<void>;
+  remove(workspaceId: string, userId: string, sourceId: string): Promise<void>;
+  assertWorkspaceMember(workspaceId: string, userId: string): Promise<void>;
 }

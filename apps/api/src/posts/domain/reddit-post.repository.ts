@@ -20,6 +20,7 @@ export interface IngestedPost {
 export interface RedditPostRepository {
   ingest(
     workspaceId: string,
+    userId: string,
     input: IngestRedditPostInput,
   ): Promise<IngestedPost>;
 }

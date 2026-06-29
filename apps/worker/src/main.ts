@@ -106,6 +106,7 @@ async function bootstrap() {
     async (job) => {
       const { workspaceId, sourceIds } = job.data as {
         workspaceId: string;
+        userId: string;
         sourceIds?: string[];
       };
       await job.updateProgress({ status: 'RUNNING' });
