@@ -8,7 +8,6 @@ import {
   EmailOutboxService,
   LlmPoolRouterService,
   PrismaService,
-  ProductionService,
   RedditPublicCollectorService,
 } from '@leadsignal/api';
 
@@ -32,7 +31,6 @@ async function bootstrap() {
   const prisma = app.get(PrismaService);
   const router = app.get(LlmPoolRouterService);
   const redditCollector = app.get(RedditPublicCollectorService);
-  const production = app.get(ProductionService);
   const emailOutbox = app.get(EmailOutboxService);
   const workerId = randomUUID();
   const connection = createValkeyConnection();
@@ -144,22 +142,12 @@ async function bootstrap() {
     `;
     if (acquired[0]?.ownerId !== workerId) return;
 
-    const results: Record<string, unknown> = {};
     try {
-      results.public = await redditCollector.collect();
+      const result = await redditCollector.collect();
+      console.log('Reddit backend crawler completed', result);
     } catch (error) {
-      results.publicError = error instanceof Error ? error.message : String(error);
-      console.error('Reddit public crawler failed', error);
+      console.error('Reddit backend crawler failed', error);
     }
-
-    try {
-      results.oauth = await production.collectReddit();
-    } catch (error) {
-      results.oauthError = error instanceof Error ? error.message : String(error);
-      console.error('Reddit OAuth crawler failed', error);
-    }
-
-    console.log('Reddit backend collection completed', results);
   };
 
   let processingOutbox = false;
