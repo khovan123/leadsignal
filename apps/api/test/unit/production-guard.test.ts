@@ -8,14 +8,14 @@ test('allows only the intended unauthenticated extension handshake routes', () =
   assert.equal(isPublicProductionRoute('POST', '/api/auth/extension/verify'), true);
   assert.equal(isPublicProductionRoute('POST', '/api/auth/extension/exchange'), true);
   assert.equal(isPublicProductionRoute('POST', '/api/extension/ingest'), true);
-  assert.equal(isPublicProductionRoute('GET', '/api/extension/source-settings'), true);
+  assert.equal(isPublicProductionRoute('POST', '/api/extension/source-settings'), true);
 });
 
 test('does not make future extension endpoints public by prefix', () => {
   assert.equal(isPublicProductionRoute('GET', '/api/auth/extension/devices'), false);
   assert.equal(isPublicProductionRoute('POST', '/api/auth/extension/revoke-all'), false);
   assert.equal(isPublicProductionRoute('GET', '/api/extension/ingest'), false);
-  assert.equal(isPublicProductionRoute('POST', '/api/extension/source-settings'), false);
+  assert.equal(isPublicProductionRoute('GET', '/api/extension/source-settings'), false);
 });
 
 test('ignores query strings while matching public routes', () => {
