@@ -1,10 +1,10 @@
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import {
-  chromium,
-  type BrowserContext,
-  type LaunchPersistentContextOptions,
-} from 'playwright';
+import { chromium, type BrowserContext } from 'playwright';
+
+type PersistentContextOptions = NonNullable<
+  Parameters<typeof chromium.launchPersistentContext>[1]
+>;
 
 function envBoolean(
   value: string | undefined,
@@ -28,7 +28,7 @@ export async function launchRedditBackendContext(): Promise<BrowserContext> {
   const channel =
     process.env.REDDIT_BROWSER_CHANNEL?.trim() || undefined;
 
-  const options: LaunchPersistentContextOptions = {
+  const options: PersistentContextOptions = {
     headless: !envBoolean(
       process.env.REDDIT_SHOW_BROWSER,
       false,
