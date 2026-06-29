@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import {
   createExtensionPairingCodeAction,
-  extensionLoginAction,
   getExtensionSessionStateAction,
 } from '../auth-actions';
+import { exchangeExtensionTicketAction } from './extension-login-actions';
 
 const FLOW_LOCK_KEY = 'ls_extension_login_flow_started_at';
 const FLOW_LOCK_TTL_MS = 15_000;
@@ -60,13 +60,12 @@ export function ExtensionLoginClient({
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const [error, setError] = useState(initialError ? decodeURIComponent(initialError) : '');
-  const ticketRef = useRef<HTMLInputElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
-  const exchangeSubmittedRef = useRef(false);
   const autoStartedRef = useRef(false);
+  const exchangeInFlightRef = useRef(false);
 
   function handleFlowError(message: string) {
     autoStartedRef.current = false;
+    exchangeInFlightRef.current = false;
     releaseFlowLock();
     setBusy(false);
 
@@ -122,13 +121,17 @@ export function ExtensionLoginClient({
   }
 
   useEffect(() => {
-    document.cookie = 'ls_extension_login_complete=; Path=/; Max-Age=0';
-
     let detected = false;
     let currentSession: SessionState | null = null;
 
-    const onMessage = (event: MessageEvent<ExtensionMessage>) => {
-      if (event.source !== window || event.origin !== window.location.origin || !event.data?.type) return;
+    const onMessage = async (event: MessageEvent<ExtensionMessage>) => {
+      if (
+        event.source !== window ||
+        event.origin !== window.location.origin ||
+        !event.data?.type
+      ) {
+        return;
+      }
       const message = event.data;
 
       if (message.type === 'LEADSIGNAL_EXTENSION_PONG') {
@@ -165,10 +168,18 @@ export function ExtensionLoginClient({
           handleFlowError(message.error ?? 'Extension không thể xác thực thiết bị.');
           return;
         }
+        if (exchangeInFlightRef.current) return;
 
-        if (ticketRef.current) ticketRef.current.value = message.ticket;
-        exchangeSubmittedRef.current = true;
-        formRef.current?.submit();
+        exchangeInFlightRef.current = true;
+        setBusy(true);
+        const result = await exchangeExtensionTicketAction(message.ticket);
+        if (!result.ok) {
+          handleFlowError(result.error);
+          return;
+        }
+
+        releaseFlowLock();
+        window.location.replace(`/${locale}`);
       }
     };
 
@@ -194,20 +205,14 @@ export function ExtensionLoginClient({
       window.clearTimeout(timeout);
       window.removeEventListener('message', onMessage);
     };
-  }, []);
+  }, [locale]);
 
   function retry() {
-    if (!session?.authenticated || !session.workspaceId || cooldown) return;
+    if (!session?.authenticated || !session.workspaceId || cooldown || busy) return;
     releaseFlowLock();
     autoStartedRef.current = false;
+    exchangeInFlightRef.current = false;
     startAutomaticFlow(state, session);
-  }
-
-  function handleExchangeFrameLoad() {
-    if (!exchangeSubmittedRef.current) return;
-    exchangeSubmittedRef.current = false;
-    releaseFlowLock();
-    window.location.assign(`/${locale}`);
   }
 
   const needsAccount = session !== null && !session.authenticated;
@@ -285,22 +290,6 @@ export function ExtensionLoginClient({
           </div>
         )}
       </div>
-
-      <iframe
-        name="extension-login-target"
-        title="Extension login completion"
-        className="hidden"
-        onLoad={handleExchangeFrameLoad}
-      />
-      <form
-        ref={formRef}
-        action={extensionLoginAction}
-        target="extension-login-target"
-        className="hidden"
-      >
-        <input type="hidden" name="locale" value={locale} />
-        <input ref={ticketRef} type="hidden" name="ticket" />
-      </form>
     </div>
   );
 }
