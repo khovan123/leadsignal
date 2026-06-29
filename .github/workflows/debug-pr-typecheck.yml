@@ -1,0 +1,20 @@
+name: Focused Typecheck
+
+on:
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile=false --reporter=silent
+      - run: pnpm db:generate
+      - name: Typecheck
+        run: pnpm build
