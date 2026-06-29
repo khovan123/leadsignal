@@ -39,10 +39,18 @@ export class QueueService implements OnModuleDestroy {
     );
   }
 
-  enqueueRedditCollection(workspaceId: string, sourceIds?: string[]) {
+  enqueueRedditCollection(
+    workspaceId: string,
+    userId: string,
+    sourceIds?: string[],
+  ) {
     return this.redditCollection.add(
       'collect-reddit-sources',
-      { workspaceId, sourceIds: sourceIds?.length ? sourceIds : undefined },
+      {
+        workspaceId,
+        userId,
+        sourceIds: sourceIds?.length ? sourceIds : undefined,
+      },
       {
         attempts: 2,
         backoff: { type: 'exponential', delay: 15_000 },
@@ -59,6 +67,7 @@ export class QueueService implements OnModuleDestroy {
     return {
       id: String(job.id),
       workspaceId: String(job.data?.workspaceId ?? ''),
+      userId: String(job.data?.userId ?? ''),
       state,
       progress: job.progress,
       result: job.returnvalue,
