@@ -15,6 +15,22 @@ jobs:
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile=false --reporter=silent
-      - run: pnpm db:generate
+      - name: Generate Prisma client
+        id: prisma
+        continue-on-error: true
+        shell: bash
+        run: |
+          pnpm db:generate > diagnostics.log 2>&1
       - name: Typecheck
-        run: pnpm build
+        if: steps.prisma.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          pnpm build >> diagnostics.log 2>&1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: focused-typecheck-diagnostics
+          path: diagnostics.log
+      - name: Fail on diagnostics
+        if: steps.prisma.outcome != 'success'
+        run: exit 1
