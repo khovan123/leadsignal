@@ -1,0 +1,7 @@
+name: Dedup Diagnostics
+on: pull_request
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo diagnostics
