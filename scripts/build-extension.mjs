@@ -22,6 +22,10 @@ const files = [
   'options.js',
 ];
 
+if (browser === 'firefox') {
+  files.push('icon-firefox.svg');
+}
+
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await Promise.all(files.map((file) => cp(resolve(source, file), resolve(output, file))));
