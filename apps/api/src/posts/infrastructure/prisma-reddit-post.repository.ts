@@ -5,6 +5,7 @@ import type {
   IngestedPost,
   RedditPostRepository,
 } from '../domain/reddit-post.repository';
+import { registerWorkspacePostDiscovery } from './workspace-discovery';
 
 @Injectable()
 export class PrismaRedditPostRepository implements RedditPostRepository {
@@ -15,7 +16,7 @@ export class PrismaRedditPostRepository implements RedditPostRepository {
     userId: string,
     input: IngestRedditPostInput,
   ): Promise<IngestedPost> {
-    return this.prisma.$transaction(async (tx) => {
+    const { sourceId, postId } = await this.prisma.$transaction(async (tx) => {
       const source = await tx.redditSource.upsert({
         where: { id: input.sourceId },
         update: {},
@@ -47,18 +48,15 @@ export class PrismaRedditPostRepository implements RedditPostRepository {
           postedAt: input.postedAt,
         },
       });
-      await tx.postDiscovery.upsert({
-        where: {
-          workspaceId_postId_sourceId: {
-            workspaceId,
-            postId: post.id,
-            sourceId: source.id,
-          },
-        },
-        update: { discoveredAt: new Date() },
-        create: { workspaceId, postId: post.id, sourceId: source.id },
-      });
-      return { postId: post.id };
+      return { sourceId: source.id, postId: post.id };
     });
+
+    await registerWorkspacePostDiscovery(
+      this.prisma,
+      workspaceId,
+      postId,
+      sourceId,
+    );
+    return { postId };
   }
 }
