@@ -1,44 +1,10 @@
 name: Dedup Diagnostics
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: leadsignal
-          POSTGRES_USER: leadsignal
-          POSTGRES_PASSWORD: test-only
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U leadsignal -d leadsignal"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://leadsignal:test-only@localhost:5432/leadsignal?schema=public
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.9.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: pnpm install --frozen-lockfile=false --reporter=silent
-      - name: Capture migration output
-        continue-on-error: true
-        shell: bash
-        run: |
-          pnpm db:generate > migration-diagnostics.log 2>&1
-          pnpm db:deploy >> migration-diagnostics.log 2>&1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dedup-migration-diagnostics
-          path: migration-diagnostics.log
-      - run: exit 1
+      - run: echo "Temporary migration diagnostics disabled"
