@@ -1,0 +1,55 @@
+name: Resolve PR 36 Conflict
+
+on:
+  push:
+    branches:
+      - feat/backend-reddit-session-crawler
+    paths:
+      - .github/workflows/resolve-pr36-conflict.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  merge-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/backend-reddit-session-crawler
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge main and keep the reviewed branch resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "main is already contained in this branch"
+            exit 0
+          fi
+
+          set +e
+          git merge --no-ff --no-commit origin/main
+          merge_status=$?
+          set -e
+
+          if [ "$merge_status" -ne 0 ]; then
+            conflict_files=$(git diff --name-only --diff-filter=U)
+            echo "Resolving reviewed conflicts with branch versions:"
+            echo "$conflict_files"
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              git checkout --ours -- "$file"
+              git add "$file"
+            done <<< "$conflict_files"
+          fi
+
+          git add -A
+          git commit -m "merge: sync main into feat/backend-reddit-session-crawler"
+          git push origin HEAD:feat/backend-reddit-session-crawler

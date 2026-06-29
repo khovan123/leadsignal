@@ -395,7 +395,7 @@ export class ProductionService {
 
   async oauthStart(provider: string, workspaceId: string, userId: string) {
     const normalized = provider.toLowerCase();
-    if (!['reddit', 'github', 'google'].includes(normalized)) {
+    if (!['github', 'google'].includes(normalized)) {
       return {
         provider: normalized,
         mode: 'API_KEY_ONLY',
@@ -416,17 +416,7 @@ export class ProductionService {
     `;
 
     let authorizationUrl: URL;
-    if (normalized === 'reddit') {
-      authorizationUrl = new URL('https://www.reddit.com/api/v1/authorize');
-      authorizationUrl.search = new URLSearchParams({
-        client_id: this.required('REDDIT_CLIENT_ID'),
-        response_type: 'code',
-        state,
-        redirect_uri: redirectUri,
-        duration: 'permanent',
-        scope: 'identity read history',
-      }).toString();
-    } else if (normalized === 'github') {
+    if (normalized === 'github') {
       authorizationUrl = new URL('https://github.com/login/oauth/authorize');
       authorizationUrl.search = new URLSearchParams({
         client_id: this.required('GITHUB_OAUTH_CLIENT_ID'),
@@ -482,16 +472,12 @@ export class ProductionService {
     }
 
     const tokenData = await this.exchangeOAuthCode(normalized, code, saved);
-    if (normalized === 'reddit') {
-      await this.storeReddit(saved.workspaceId, saved.userId, tokenData);
-    } else {
-      await this.storeProviderOAuth(
-        normalized,
-        saved.workspaceId,
-        saved.userId,
-        tokenData,
-      );
-    }
+    await this.storeProviderOAuth(
+      normalized,
+      saved.workspaceId,
+      saved.userId,
+      tokenData,
+    );
     return { success: true, provider: normalized, workspaceId: saved.workspaceId };
   }
 
@@ -501,22 +487,7 @@ export class ProductionService {
     state: OAuthStateRow,
   ): Promise<TokenPayload> {
     if (provider === 'reddit') {
-      const basic = Buffer.from(
-        `${this.required('REDDIT_CLIENT_ID')}:${this.required('REDDIT_CLIENT_SECRET')}`,
-      ).toString('base64');
-      return this.fetchToken(
-        'https://www.reddit.com/api/v1/access_token',
-        new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: state.redirectUri,
-        }),
-        {
-          Authorization: `Basic ${basic}`,
-          'User-Agent':
-            process.env.REDDIT_USER_AGENT ?? 'LeadSignal/1.0',
-        },
-      );
+        // Reddit token exchange
     }
     if (provider === 'github') {
       return this.fetchToken(
@@ -578,33 +549,33 @@ export class ProductionService {
     };
   }
 
-  private async storeReddit(
-    workspaceId: string,
-    userId: string,
-    rawTokenData: TokenPayload,
-  ) {
-    const tokenData = this.normalizeTokenPayload(rawTokenData);
-    const encrypted = this.crypto.encrypt(JSON.stringify(tokenData));
-    await this.prisma.$executeRaw`
-      INSERT INTO "RedditConnection"
-        (id,"workspaceId","ownerUserId","encryptedCredential","credentialIv",
-         "credentialAuthTag","expiresAt",scope,"updatedAt")
-      VALUES
-        (${randomUUID()}::uuid,${workspaceId}::uuid,${userId}::uuid,
-         ${encrypted.encrypted},${encrypted.iv},${encrypted.authTag},
-         ${tokenData.expires_at ? new Date(tokenData.expires_at) : null},
-         ${typeof tokenData.scope === 'string' ? tokenData.scope : null},NOW())
-      ON CONFLICT ("workspaceId") DO UPDATE SET
-        "ownerUserId"=EXCLUDED."ownerUserId",
-        "encryptedCredential"=EXCLUDED."encryptedCredential",
-        "credentialIv"=EXCLUDED."credentialIv",
-        "credentialAuthTag"=EXCLUDED."credentialAuthTag",
-        "expiresAt"=EXCLUDED."expiresAt",
-        scope=EXCLUDED.scope,
-        status='ACTIVE',
-        "updatedAt"=NOW()
-    `;
-  }
+  // private async storeReddit(
+  //   workspaceId: string,
+  //   userId: string,
+  //   rawTokenData: TokenPayload,
+  // ) {
+  //   const tokenData = this.normalizeTokenPayload(rawTokenData);
+  //   const encrypted = this.crypto.encrypt(JSON.stringify(tokenData));
+  //   await this.prisma.$executeRaw`
+  //     INSERT INTO "RedditConnection"
+  //       (id,"workspaceId","ownerUserId","encryptedCredential","credentialIv",
+  //        "credentialAuthTag","expiresAt",scope,"updatedAt")
+  //     VALUES
+  //       (${randomUUID()}::uuid,${workspaceId}::uuid,${userId}::uuid,
+  //        ${encrypted.encrypted},${encrypted.iv},${encrypted.authTag},
+  //        ${tokenData.expires_at ? new Date(tokenData.expires_at) : null},
+  //        ${typeof tokenData.scope === 'string' ? tokenData.scope : null},NOW())
+  //     ON CONFLICT ("workspaceId") DO UPDATE SET
+  //       "ownerUserId"=EXCLUDED."ownerUserId",
+  //       "encryptedCredential"=EXCLUDED."encryptedCredential",
+  //       "credentialIv"=EXCLUDED."credentialIv",
+  //       "credentialAuthTag"=EXCLUDED."credentialAuthTag",
+  //       "expiresAt"=EXCLUDED."expiresAt",
+  //       scope=EXCLUDED.scope,
+  //       status='ACTIVE',
+  //       "updatedAt"=NOW()
+  //   `;
+  // }
 
   private async storeProviderOAuth(
     provider: string,
@@ -773,136 +744,136 @@ export class ProductionService {
     return tokenData.access_token;
   }
 
-  async collectReddit(): Promise<{ workspaces: number; posts: number }> {
-    const connections = await this.prisma.$queryRaw<any[]>`
-      SELECT * FROM "RedditConnection" WHERE status='ACTIVE'
-    `;
-    let posts = 0;
-    for (const connection of connections) {
-      try {
-        const credentials = JSON.parse(
-          this.crypto.decrypt(
-            connection.encryptedCredential,
-            connection.credentialIv,
-            connection.credentialAuthTag,
-          ),
-        ) as TokenPayload;
-        const accessToken = await this.redditAccessToken(
-          credentials,
-          connection.workspaceId,
-          connection.ownerUserId,
-        );
-        const sources = await this.prisma.redditSource.findMany({
-          where: { workspaceId: connection.workspaceId, enabled: true },
-        });
-        for (const source of sources) {
-          const endpoint = source.subreddit
-            ? `https://oauth.reddit.com/r/${encodeURIComponent(source.subreddit)}/new?limit=50`
-            : `https://oauth.reddit.com/search?q=${encodeURIComponent(source.searchQuery ?? '')}&sort=new&limit=50`;
-          const response = await fetch(endpoint, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'User-Agent':
-                process.env.REDDIT_USER_AGENT ?? 'LeadSignal/1.0',
-            },
-          });
-          if (!response.ok) throw new Error(`Reddit ${response.status}`);
-          const payload = (await response.json()) as any;
-          for (const item of payload.data?.children ?? []) {
-            const value = item.data;
-            const post = await this.prisma.redditPost.upsert({
-              where: { externalPostId: value.name },
-              update: {
-                score: value.score ?? 0,
-                commentCount: value.num_comments ?? 0,
-              },
-              create: {
-                externalPostId: value.name,
-                subreddit: value.subreddit,
-                authorUsername: value.author,
-                title: value.title,
-                body: value.selftext ?? '',
-                permalink: `https://reddit.com${value.permalink}`,
-                score: value.score ?? 0,
-                commentCount: value.num_comments ?? 0,
-                postedAt: new Date(
-                  (value.created_utc ?? Date.now() / 1_000) * 1_000,
-                ),
-              },
-            });
-            await this.prisma.postDiscovery.upsert({
-              where: {
-                workspaceId_postId_sourceId: {
-                  workspaceId: connection.workspaceId,
-                  postId: post.id,
-                  sourceId: source.id,
-                },
-              },
-              update: {},
-              create: {
-                workspaceId: connection.workspaceId,
-                postId: post.id,
-                sourceId: source.id,
-              },
-            });
-            await this.queue.enqueueClassification(
-              connection.workspaceId,
-              post.id,
-            );
-            posts++;
-          }
-        }
-        await this.prisma.$executeRaw`
-          UPDATE "RedditConnection"
-          SET "lastCollectedAt"=NOW(),"lastError"=NULL,"updatedAt"=NOW()
-          WHERE id=${connection.id}::uuid
-        `;
-      } catch (error) {
-        await this.prisma.$executeRaw`
-          UPDATE "RedditConnection"
-          SET "lastError"=${String(error).slice(0, 1000)},"updatedAt"=NOW()
-          WHERE id=${connection.id}::uuid
-        `;
-      }
-    }
-    return { workspaces: connections.length, posts };
-  }
+  // async collectReddit(): Promise<{ workspaces: number; posts: number }> {
+  //   const connections = await this.prisma.$queryRaw<any[]>`
+  //     SELECT * FROM "RedditConnection" WHERE status='ACTIVE'
+  //   `;
+  //   let posts = 0;
+  //   for (const connection of connections) {
+  //     try {
+  //       const credentials = JSON.parse(
+  //         this.crypto.decrypt(
+  //           connection.encryptedCredential,
+  //           connection.credentialIv,
+  //           connection.credentialAuthTag,
+  //         ),
+  //       ) as TokenPayload;
+  //       const accessToken = await this.redditAccessToken(
+  //         credentials,
+  //         connection.workspaceId,
+  //         connection.ownerUserId,
+  //       );
+  //       const sources = await this.prisma.redditSource.findMany({
+  //         where: { workspaceId: connection.workspaceId, enabled: true },
+  //       });
+  //       for (const source of sources) {
+  //         const endpoint = source.subreddit
+  //           ? `https://oauth.reddit.com/r/${encodeURIComponent(source.subreddit)}/new?limit=50`
+  //           : `https://oauth.reddit.com/search?q=${encodeURIComponent(source.searchQuery ?? '')}&sort=new&limit=50`;
+  //         const response = await fetch(endpoint, {
+  //           headers: {
+  //             Authorization: `Bearer ${accessToken}`,
+  //             'User-Agent':
+  //               process.env.REDDIT_USER_AGENT ?? 'LeadSignal/1.0',
+  //           },
+  //         });
+  //         if (!response.ok) throw new Error(`Reddit ${response.status}`);
+  //         const payload = (await response.json()) as any;
+  //         for (const item of payload.data?.children ?? []) {
+  //           const value = item.data;
+  //           const post = await this.prisma.redditPost.upsert({
+  //             where: { externalPostId: value.name },
+  //             update: {
+  //               score: value.score ?? 0,
+  //               commentCount: value.num_comments ?? 0,
+  //             },
+  //             create: {
+  //               externalPostId: value.name,
+  //               subreddit: value.subreddit,
+  //               authorUsername: value.author,
+  //               title: value.title,
+  //               body: value.selftext ?? '',
+  //               permalink: `https://reddit.com${value.permalink}`,
+  //               score: value.score ?? 0,
+  //               commentCount: value.num_comments ?? 0,
+  //               postedAt: new Date(
+  //                 (value.created_utc ?? Date.now() / 1_000) * 1_000,
+  //               ),
+  //             },
+  //           });
+  //           await this.prisma.postDiscovery.upsert({
+  //             where: {
+  //               workspaceId_postId_sourceId: {
+  //                 workspaceId: connection.workspaceId,
+  //                 postId: post.id,
+  //                 sourceId: source.id,
+  //               },
+  //             },
+  //             update: {},
+  //             create: {
+  //               workspaceId: connection.workspaceId,
+  //               postId: post.id,
+  //               sourceId: source.id,
+  //             },
+  //           });
+  //           await this.queue.enqueueClassification(
+  //             connection.workspaceId,
+  //             post.id,
+  //           );
+  //           posts++;
+  //         }
+  //       }
+  //       await this.prisma.$executeRaw`
+  //         UPDATE "RedditConnection"
+  //         SET "lastCollectedAt"=NOW(),"lastError"=NULL,"updatedAt"=NOW()
+  //         WHERE id=${connection.id}::uuid
+  //       `;
+  //     } catch (error) {
+  //       await this.prisma.$executeRaw`
+  //         UPDATE "RedditConnection"
+  //         SET "lastError"=${String(error).slice(0, 1000)},"updatedAt"=NOW()
+  //         WHERE id=${connection.id}::uuid
+  //       `;
+  //     }
+  //   }
+  //   return { workspaces: connections.length, posts };
+  // }
 
-  private async redditAccessToken(
-    tokenData: TokenPayload,
-    workspaceId: string,
-    ownerUserId: string,
-  ) {
-    if (
-      tokenData.access_token &&
-      (!tokenData.expires_at || tokenData.expires_at > Date.now() + 60_000)
-    ) {
-      return tokenData.access_token;
-    }
-    if (!tokenData.refresh_token) return tokenData.access_token;
+  // private async redditAccessToken(
+  //   tokenData: TokenPayload,
+  //   workspaceId: string,
+  //   ownerUserId: string,
+  // ) {
+  //   if (
+  //     tokenData.access_token &&
+  //     (!tokenData.expires_at || tokenData.expires_at > Date.now() + 60_000)
+  //   ) {
+  //     return tokenData.access_token;
+  //   }
+  //   if (!tokenData.refresh_token) return tokenData.access_token;
 
-    const basic = Buffer.from(
-      `${this.required('REDDIT_CLIENT_ID')}:${this.required('REDDIT_CLIENT_SECRET')}`,
-    ).toString('base64');
-    const refreshed = await this.fetchToken(
-      'https://www.reddit.com/api/v1/access_token',
-      new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: tokenData.refresh_token,
-      }),
-      {
-        Authorization: `Basic ${basic}`,
-        'User-Agent': process.env.REDDIT_USER_AGENT ?? 'LeadSignal/1.0',
-      },
-    );
-    const merged = this.normalizeTokenPayload({
-      ...tokenData,
-      ...refreshed,
-      refresh_token: tokenData.refresh_token,
-    });
-    await this.storeReddit(workspaceId, ownerUserId, merged);
-    return merged.access_token;
-  }
+  //   const basic = Buffer.from(
+  //     `${this.required('REDDIT_CLIENT_ID')}:${this.required('REDDIT_CLIENT_SECRET')}`,
+  //   ).toString('base64');
+  //   const refreshed = await this.fetchToken(
+  //     'https://www.reddit.com/api/v1/access_token',
+  //     new URLSearchParams({
+  //       grant_type: 'refresh_token',
+  //       refresh_token: tokenData.refresh_token,
+  //     }),
+  //     {
+  //       Authorization: `Basic ${basic}`,
+  //       'User-Agent': process.env.REDDIT_USER_AGENT ?? 'LeadSignal/1.0',
+  //     },
+  //   );
+  //   const merged = this.normalizeTokenPayload({
+  //     ...tokenData,
+  //     ...refreshed,
+  //     refresh_token: tokenData.refresh_token,
+  //   });
+  //   await this.storeReddit(workspaceId, ownerUserId, merged);
+  //   return merged.access_token;
+  // }
 
   private required(name: string) {
     const value = process.env[name];

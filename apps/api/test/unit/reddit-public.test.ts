@@ -72,10 +72,10 @@ test('resolves plain queries with sort and time range', () => {
   assert.equal(url.searchParams.get('t'), 'month');
 });
 
-test('marks following as extension-only', () => {
-  assert.throws(
-    () => resolvePublicRedditSourceUrl(source({ type: 'FOLLOWING' })),
-    /require the browser extension/,
+test('resolves following feed in the backend browser profile', () => {
+  assert.equal(
+    resolvePublicRedditSourceUrl(source({ type: 'FOLLOWING' })),
+    'https://www.reddit.com/',
   );
 });
 

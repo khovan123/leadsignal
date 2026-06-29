@@ -21,8 +21,8 @@ export function resolvePublicRedditSourceUrl(
   const sort = String(source.sort || 'NEW').toLowerCase();
   const timeRange = String(source.timeRange || 'ALL').toLowerCase();
 
-  if (type === 'FOLLOWING') {
-    throw new Error('FOLLOWING sources require the browser extension');
+  if (type === 'FOLLOWING' || type === 'HOME') {
+    return `https://${host}/`;
   }
 
   if (subreddit || type === 'SUBREDDIT') {
@@ -37,7 +37,6 @@ export function resolvePublicRedditSourceUrl(
     return url.href;
   }
 
-  if (type === 'HOME') return `https://${host}/`;
   if (type === 'POPULAR') return `https://${host}/r/popular/`;
   if (type === 'NEWS') return `https://${host}/news/`;
   if (type === 'BEST') return `https://${host}/best/`;

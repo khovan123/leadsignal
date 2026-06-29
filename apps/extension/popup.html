@@ -18,9 +18,12 @@
       <div class="card">
         <div class="row"><span>Paired</span><strong id="paired">—</strong></div>
         <div class="row"><span>Workspace</span><strong id="workspace">—</strong></div>
+        <div class="row"><span>Crawler</span><strong id="mode">Backend worker</strong></div>
       </div>
 
-      <button id="capture" class="primary">Capture current Reddit page</button>
+      <p class="message success">
+        Reddit collection runs only in the LeadSignal backend worker. This extension does not scroll, parse, or upload Reddit posts.
+      </p>
       <button id="options" class="secondary">Open settings</button>
       <p id="message" class="message" aria-live="polite"></p>
     </main>

@@ -144,9 +144,9 @@ async function bootstrap() {
 
     try {
       const result = await redditCollector.collect();
-      console.log('Reddit public crawler completed', result);
+      console.log('Reddit backend crawler completed', result);
     } catch (error) {
-      console.error('Reddit public crawler failed', error);
+      console.error('Reddit backend crawler failed', error);
     }
   };
 
