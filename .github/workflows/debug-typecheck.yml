@@ -1,0 +1,29 @@
+name: Debug Typecheck
+
+on:
+  push:
+    branches:
+      - feat/member-scoped-reddit-sources
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile=false --reporter=silent
+      - run: pnpm db:generate
+      - name: Typecheck
+        shell: bash
+        run: |
+          set +e
+          pnpm build > typecheck.log 2>&1
+          status=$?
+          cat typecheck.log
+          exit $status
