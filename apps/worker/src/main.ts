@@ -51,24 +51,29 @@ async function bootstrap() {
           result.output.fitScore * 0.3 +
           result.output.urgencyScore * 0.2,
       );
-      const classification = await prisma.postClassification.create({
-        data: {
+      const classificationData = {
+        correlationId: result.correlationId,
+        method: result.provider === 'RULE_ENGINE' ? 'RULE_ENGINE' : 'LLM',
+        isBuyingSignal: result.output.isBuyingSignal,
+        signalType: result.output.signalType,
+        confidence: result.output.confidence,
+        buyingIntentScore: result.output.buyingIntentScore,
+        urgencyScore: result.output.urgencyScore,
+        fitScore: result.output.fitScore,
+        priorityScore,
+        priorityLevel: result.priority,
+        summary: result.output.summary,
+        evidence: result.output.evidence,
+        provider: result.provider,
+        model: result.model,
+      };
+      const classification = await prisma.postClassification.upsert({
+        where: { workspaceId_postId: { workspaceId, postId } },
+        update: classificationData,
+        create: {
           workspaceId,
           postId,
-          correlationId: result.correlationId,
-          method: result.provider === 'RULE_ENGINE' ? 'RULE_ENGINE' : 'LLM',
-          isBuyingSignal: result.output.isBuyingSignal,
-          signalType: result.output.signalType,
-          confidence: result.output.confidence,
-          buyingIntentScore: result.output.buyingIntentScore,
-          urgencyScore: result.output.urgencyScore,
-          fitScore: result.output.fitScore,
-          priorityScore,
-          priorityLevel: result.priority,
-          summary: result.output.summary,
-          evidence: result.output.evidence,
-          provider: result.provider,
-          model: result.model,
+          ...classificationData,
         },
       });
 

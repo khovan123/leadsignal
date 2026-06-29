@@ -246,6 +246,7 @@ model PostDiscovery {
   post      RedditPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
   source    RedditSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
+  @@unique([workspaceId, postId])
   @@unique([workspaceId, postId, sourceId])
   @@index([workspaceId, discoveredAt])
 }
@@ -390,6 +391,7 @@ model PostClassification {
   post      RedditPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   leads     Lead[]
 
+  @@unique([workspaceId, postId])
   @@index([workspaceId, priorityScore])
 }
 
