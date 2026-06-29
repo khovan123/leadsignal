@@ -52,19 +52,27 @@ export class ExtensionAuthService {
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { role: true },
     });
-    if (!membership || ![WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(membership.role)) {
-      throw new ForbiddenException('Only workspace owners and admins can pair devices');
+    if (
+      !membership ||
+      ![WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(membership.role)
+    ) {
+      throw new ForbiddenException(
+        'Only workspace owners and admins can pair devices',
+      );
     }
 
     const role = this.resolveRole(input.role);
-    if (role === WorkspaceRole.OWNER && membership.role !== WorkspaceRole.OWNER) {
+    if (
+      role === WorkspaceRole.OWNER &&
+      membership.role !== WorkspaceRole.OWNER
+    ) {
       throw new ForbiddenException('Only an owner can invite another owner');
     }
     await this.assertWorkspaceCapacity(workspaceId);
 
-    const code = `LS-${randomBytes(4).toString('hex').toUpperCase()}-${randomBytes(3)
+    const code = `LS-${randomBytes(4)
       .toString('hex')
-      .toUpperCase()}`;
+      .toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
     const expiresInMinutes = Math.min(
       Math.max(Number(input.expiresInMinutes ?? 30), 5),
       24 * 60,
@@ -87,12 +95,17 @@ export class ExtensionAuthService {
 
   async pair(input: PairExtensionInput) {
     const pairingCode = input.pairingCode?.trim();
-    if (!pairingCode) throw new BadRequestException('pairingCode is required');
+    if (!pairingCode) {
+      throw new BadRequestException('pairingCode is required');
+    }
     const publicKeyJwk = validateExtensionPublicKey(input.publicKeyJwk);
-    const deviceLabel = this.cleanText(input.deviceLabel, 120) ?? 'LeadSignal Extension';
+    const deviceLabel =
+      this.cleanText(input.deviceLabel, 120) ?? 'LeadSignal Extension';
     const redditUsername = this.cleanText(input.redditUsername, 100);
     const displayName =
-      this.cleanText(input.displayName, 100) ?? redditUsername ?? deviceLabel;
+      this.cleanText(input.displayName, 100) ??
+      redditUsername ??
+      deviceLabel;
 
     if (this.isBootstrapCode(pairingCode)) {
       return this.bootstrapFirstDevice({
@@ -107,7 +120,9 @@ export class ExtensionAuthService {
       where: { tokenHash: tokenHash(pairingCode) },
     });
     if (!pairing || pairing.usedAt || pairing.expiresAt <= new Date()) {
-      throw new UnauthorizedException('Pairing code is invalid, expired or already used');
+      throw new UnauthorizedException(
+        'Pairing code is invalid, expired or already used',
+      );
     }
     await this.assertWorkspaceCapacity(pairing.workspaceId);
 
@@ -194,9 +209,14 @@ export class ExtensionAuthService {
       challenge.expiresAt <= new Date() ||
       challenge.nonceHash !== tokenHash(input.nonce)
     ) {
-      throw new UnauthorizedException('Extension challenge is invalid or expired');
+      throw new UnauthorizedException(
+        'Extension challenge is invalid or expired',
+      );
     }
-    if (challenge.device.status !== 'ACTIVE' || challenge.device.revokedAt) {
+    if (
+      challenge.device.status !== 'ACTIVE' ||
+      challenge.device.revokedAt
+    ) {
       throw new UnauthorizedException('Extension device is not active');
     }
 
@@ -217,7 +237,9 @@ export class ExtensionAuthService {
         data: { usedAt: new Date() },
       });
       if (consumed.count !== 1) {
-        throw new ConflictException('Extension challenge was already consumed');
+        throw new ConflictException(
+          'Extension challenge was already consumed',
+        );
       }
       await tx.extensionLoginTicket.create({
         data: {
@@ -235,7 +257,10 @@ export class ExtensionAuthService {
     return { ticket, expiresIn: 60 };
   }
 
-  async exchangeTicket(ticketValue: string | undefined, meta: RequestMeta) {
+  async exchangeTicket(
+    ticketValue: string | undefined,
+    meta: RequestMeta,
+  ) {
     if (!ticketValue) throw new UnauthorizedException('ticket is required');
     const ticket = await this.prisma.extensionLoginTicket.findUnique({
       where: { tokenHash: tokenHash(ticketValue) },
@@ -252,7 +277,9 @@ export class ExtensionAuthService {
       ticket.device.status !== 'ACTIVE' ||
       ticket.device.revokedAt
     ) {
-      throw new UnauthorizedException('Login ticket is invalid, expired or already used');
+      throw new UnauthorizedException(
+        'Login ticket is invalid, expired or already used',
+      );
     }
 
     const consumed = await this.prisma.extensionLoginTicket.updateMany({
@@ -281,7 +308,9 @@ export class ExtensionAuthService {
       Number.isNaN(timestamp.getTime()) ||
       Math.abs(Date.now() - timestamp.getTime()) > 5 * 60_000
     ) {
-      throw new UnauthorizedException('Batch timestamp is outside the allowed window');
+      throw new UnauthorizedException(
+        'Batch timestamp is outside the allowed window',
+      );
     }
     if (!input.nonce || input.nonce.length < 16 || input.nonce.length > 200) {
       throw new BadRequestException('A valid batch nonce is required');
@@ -306,7 +335,9 @@ export class ExtensionAuthService {
         deviceId_nonceHash: { deviceId: device.id, nonceHash },
       },
     });
-    if (existingNonce) throw new ConflictException('Batch nonce was already used');
+    if (existingNonce) {
+      throw new ConflictException('Batch nonce was already used');
+    }
     await this.prisma.extensionReplayNonce.create({
       data: {
         deviceId: device.id,
@@ -315,7 +346,11 @@ export class ExtensionAuthService {
       },
     });
 
-    const source = await this.resolveSource(device.workspaceId, input.batch.source);
+    const source = await this.resolveSource(
+      device.workspaceId,
+      device.userId,
+      input.batch.source,
+    );
     let discovered = 0;
     let refreshed = 0;
     for (const rawPost of input.batch.posts) {
@@ -392,19 +427,32 @@ export class ExtensionAuthService {
     });
   }
 
-  async revokeDevice(workspaceId: string, actorUserId: string, deviceId: string) {
+  async revokeDevice(
+    workspaceId: string,
+    actorUserId: string,
+    deviceId: string,
+  ) {
     const actor = await this.prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: actorUserId } },
+      where: {
+        workspaceId_userId: { workspaceId, userId: actorUserId },
+      },
       select: { role: true },
     });
-    if (!actor || ![WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(actor.role)) {
-      throw new ForbiddenException('Only workspace owners and admins can revoke devices');
+    if (
+      !actor ||
+      ![WorkspaceRole.OWNER, WorkspaceRole.ADMIN].includes(actor.role)
+    ) {
+      throw new ForbiddenException(
+        'Only workspace owners and admins can revoke devices',
+      );
     }
     const result = await this.prisma.extensionDevice.updateMany({
       where: { id: deviceId, workspaceId, revokedAt: null },
       data: { status: 'REVOKED', revokedAt: new Date() },
     });
-    if (result.count !== 1) throw new NotFoundException('Active device not found');
+    if (result.count !== 1) {
+      throw new NotFoundException('Active device not found');
+    }
     return { success: true };
   }
 
@@ -416,16 +464,19 @@ export class ExtensionAuthService {
   }) {
     const existingDevices = await this.prisma.extensionDevice.count();
     if (existingDevices > 0) {
-      throw new ForbiddenException('Bootstrap pairing is only allowed for the first device');
+      throw new ForbiddenException(
+        'Bootstrap pairing is only allowed for the first device',
+      );
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
       const userId = randomUUID();
       const workspaceId = randomUUID();
-      const slugBase = input.displayName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || 'private';
+      const slugBase =
+        input.displayName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') || 'private';
       const user = await tx.user.create({
         data: {
           id: userId,
@@ -463,7 +514,10 @@ export class ExtensionAuthService {
     return {
       deviceId: result.device.id,
       workspaceId: result.workspace.id,
-      user: { id: result.user.id, displayName: result.user.displayName },
+      user: {
+        id: result.user.id,
+        displayName: result.user.displayName,
+      },
       bootstrap: true,
     };
   }
@@ -480,16 +534,24 @@ export class ExtensionAuthService {
   }
 
   private async assertWorkspaceCapacity(workspaceId: string) {
-    const members = await this.prisma.workspaceMember.count({ where: { workspaceId } });
+    const members = await this.prisma.workspaceMember.count({
+      where: { workspaceId },
+    });
     const limit = Math.max(1, Number(process.env.MAX_PRIVATE_USERS ?? 10));
     if (members >= limit) {
-      throw new ConflictException(`Workspace has reached the ${limit}-member limit`);
+      throw new ConflictException(
+        `Workspace has reached the ${limit}-member limit`,
+      );
     }
   }
 
-  private resolveRole(value: WorkspaceRole | string | undefined): WorkspaceRole {
+  private resolveRole(
+    value: WorkspaceRole | string | undefined,
+  ): WorkspaceRole {
     const normalized = String(value ?? WorkspaceRole.MEMBER).toUpperCase();
-    if (!Object.values(WorkspaceRole).includes(normalized as WorkspaceRole)) {
+    if (
+      !Object.values(WorkspaceRole).includes(normalized as WorkspaceRole)
+    ) {
       throw new BadRequestException('Invalid workspace role');
     }
     return normalized as WorkspaceRole;
@@ -512,7 +574,8 @@ export class ExtensionAuthService {
     const sessionId = randomUUID();
     const familyId = randomUUID();
     const expiresAt = new Date(
-      Date.now() + Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86_400_000,
+      Date.now() +
+        Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86_400_000,
     );
     await this.prisma.$executeRaw`
       INSERT INTO "AuthSession"
@@ -537,37 +600,76 @@ export class ExtensionAuthService {
     };
   }
 
-  private async resolveSource(workspaceId: string, input: ExtensionBatchSource) {
+  private async resolveSource(
+    workspaceId: string,
+    userId: string,
+    input: ExtensionBatchSource,
+  ) {
     const sourceId = this.cleanText(input.sourceId, 100);
     if (sourceId) {
       const source = await this.prisma.redditSource.findFirst({
-        where: { id: sourceId, workspaceId, enabled: true },
+        where: {
+          id: sourceId,
+          workspaceId,
+          ownerUserId: userId,
+          enabled: true,
+        },
       });
-      if (!source) throw new NotFoundException('Configured Reddit source not found');
+      if (!source) {
+        throw new NotFoundException('Configured Reddit source not found');
+      }
       return source;
     }
 
-    const type = (this.cleanText(input.type, 50) ?? 'CUSTOM_URL').toUpperCase();
-    const subreddit = this.cleanText(input.subreddit, 100)?.replace(/^r\//i, '');
+    const type = (
+      this.cleanText(input.type, 50) ?? 'CUSTOM_URL'
+    ).toUpperCase();
+    const subreddit = this.cleanText(input.subreddit, 100)?.replace(
+      /^r\//i,
+      '',
+    );
     const searchQuery =
-      this.cleanText(input.searchQuery, 1000) ?? this.validateRedditUrl(input.url, true);
+      this.cleanText(input.searchQuery, 1000) ??
+      this.validateRedditUrl(input.url, true);
     const name =
       this.cleanText(input.name, 120) ??
       (subreddit ? `r/${subreddit}` : `${type} extension source`);
 
     const existing = await this.prisma.redditSource.findFirst({
-      where: { workspaceId, type, subreddit: subreddit ?? null, searchQuery: searchQuery ?? null },
+      where: {
+        workspaceId,
+        ownerUserId: userId,
+        type,
+        subreddit: subreddit ?? null,
+        searchQuery: searchQuery ?? null,
+      },
     });
     if (existing) return existing;
+
     return this.prisma.redditSource.create({
-      data: { workspaceId, type, name, subreddit, searchQuery, enabled: true },
+      data: {
+        workspaceId,
+        ownerUserId: userId,
+        type,
+        name,
+        subreddit,
+        searchQuery,
+        enabled: true,
+      },
     });
   }
 
-  private validatePost(input: ExtensionBatchPost, defaultSubreddit: string | null) {
+  private validatePost(
+    input: ExtensionBatchPost,
+    defaultSubreddit: string | null,
+  ) {
     const permalink = this.validateRedditUrl(input.permalink, false);
-    if (!permalink) throw new BadRequestException('Post permalink is required');
-    const idFromUrl = permalink.match(/\/comments\/([a-z0-9]+)(?:\/|$)/i)?.[1];
+    if (!permalink) {
+      throw new BadRequestException('Post permalink is required');
+    }
+    const idFromUrl = permalink.match(
+      /\/comments\/([a-z0-9]+)(?:\/|$)/i,
+    )?.[1];
     const providedId = this.cleanText(input.externalPostId, 100);
     const externalPostId = providedId?.startsWith('t3_')
       ? providedId
@@ -586,12 +688,17 @@ export class ExtensionAuthService {
       this.cleanText(input.subreddit, 100)?.replace(/^r\//i, '') ??
       defaultSubreddit ??
       'unknown';
-    const postedAt = input.postedAt ? new Date(input.postedAt) : new Date();
+    const postedAt = input.postedAt
+      ? new Date(input.postedAt)
+      : new Date();
 
     return {
       externalPostId,
       subreddit,
-      authorUsername: this.cleanText(input.authorUsername, 100)?.replace(/^u\//i, ''),
+      authorUsername: this.cleanText(
+        input.authorUsername,
+        100,
+      )?.replace(/^u\//i, ''),
       title,
       body,
       permalink,
@@ -601,7 +708,10 @@ export class ExtensionAuthService {
     };
   }
 
-  private validateRedditUrl(value: string | undefined, optional: boolean): string | undefined {
+  private validateRedditUrl(
+    value: string | undefined,
+    optional: boolean,
+  ): string | undefined {
     if (!value) {
       if (optional) return undefined;
       throw new BadRequestException('Reddit URL is required');
@@ -621,12 +731,17 @@ export class ExtensionAuthService {
     return url.href;
   }
 
-  private cleanText(value: unknown, maxLength: number): string | undefined {
+  private cleanText(
+    value: unknown,
+    maxLength: number,
+  ): string | undefined {
     if (typeof value !== 'string') return undefined;
     const result = value.trim();
     if (!result) return undefined;
     if (result.length > maxLength) {
-      throw new BadRequestException(`Text value exceeds ${maxLength} characters`);
+      throw new BadRequestException(
+        `Text value exceeds ${maxLength} characters`,
+      );
     }
     return result;
   }

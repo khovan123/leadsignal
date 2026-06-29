@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Param, Post, Req } from '@nestjs/common';
 import { CommandBus } from '@nestjs/cqrs';
 import { IngestPostCommand } from '../application/ingest-post.command';
 
@@ -9,8 +9,11 @@ export class PostsController {
   @Post('ingest')
   ingest(
     @Param('workspaceId') workspaceId: string,
+    @Req() request: any,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.commands.execute(new IngestPostCommand(workspaceId, body));
+    return this.commands.execute(
+      new IngestPostCommand(workspaceId, request.user.sub, body),
+    );
   }
 }

@@ -28,8 +28,10 @@ export class RedditSourcesController {
   ) {}
 
   @Get()
-  list(@Param('workspaceId') workspaceId: string) {
-    return this.queries.execute(new ListRedditSourcesQuery(workspaceId));
+  list(@Param('workspaceId') workspaceId: string, @Req() request: any) {
+    return this.queries.execute(
+      new ListRedditSourcesQuery(workspaceId, request.user.sub),
+    );
   }
 
   @Post()
@@ -94,9 +96,14 @@ export class RedditSourcesController {
   job(
     @Param('workspaceId') workspaceId: string,
     @Param('jobId') jobId: string,
+    @Req() request: any,
   ) {
     return this.queries.execute(
-      new GetRedditCollectionJobQuery(workspaceId, jobId),
+      new GetRedditCollectionJobQuery(
+        workspaceId,
+        request.user.sub,
+        jobId,
+      ),
     );
   }
 }
