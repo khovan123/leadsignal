@@ -6,6 +6,8 @@ on:
 jobs:
   typecheck:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://leadsignal:test-only@localhost:5432/leadsignal?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -22,6 +24,7 @@ jobs:
         run: |
           pnpm db:generate > diagnostics.log 2>&1
       - name: Typecheck
+        id: typecheck
         if: steps.prisma.outcome == 'success'
         continue-on-error: true
         shell: bash
@@ -32,5 +35,5 @@ jobs:
           name: focused-typecheck-diagnostics
           path: diagnostics.log
       - name: Fail on diagnostics
-        if: steps.prisma.outcome != 'success'
+        if: steps.prisma.outcome != 'success' || steps.typecheck.outcome != 'success'
         run: exit 1
