@@ -1,0 +1,16 @@
+services:
+  nine-router:
+    image: decolua/9router:latest
+    restart: unless-stopped
+    ports:
+      - "20128:20128"
+    environment:
+      DATA_DIR: /app/data
+      PORT: "20128"
+      HOSTNAME: 0.0.0.0
+      REQUIRE_API_KEY: "true"
+    volumes:
+      - nine-router-data:/app/data
+
+volumes:
+  nine-router-data:
