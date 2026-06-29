@@ -1,0 +1,1 @@
+-- Serialize concurrent workspace post discovery writes.
