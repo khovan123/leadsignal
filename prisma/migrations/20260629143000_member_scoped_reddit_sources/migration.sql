@@ -2,8 +2,7 @@ ALTER TABLE "RedditSource"
   ADD COLUMN "ownerUserId" UUID;
 
 UPDATE "RedditSource" source
-SET "ownerUserId" = member."userId"
-FROM LATERAL (
+SET "ownerUserId" = (
   SELECT wm."userId"
   FROM "WorkspaceMember" wm
   WHERE wm."workspaceId" = source."workspaceId"
@@ -16,7 +15,7 @@ FROM LATERAL (
     END,
     wm."createdAt" ASC
   LIMIT 1
-) member;
+);
 
 DO $$
 BEGIN
