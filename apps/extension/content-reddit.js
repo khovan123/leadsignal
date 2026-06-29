@@ -81,7 +81,6 @@ function detectSource(current) {
   if (/^\/r\/popular(?:\/|$)/i.test(path)) return { type: 'POPULAR', name: 'Reddit Popular' };
   if (/^\/news(?:\/|$)/i.test(path)) return { type: 'NEWS', name: 'Reddit News' };
   if (/^\/(?:best|posts)(?:\/|$)/i.test(path)) return { type: 'BEST', name: 'Reddit Best' };
-  if (/^\/new(?:\/|$)/i.test(path)) return { type: 'LATEST', name: 'Reddit Latest' };
   if (/^\/search(?:\/|$)/i.test(path)) {
     return { type: 'SEARCH', name: 'Reddit Search', searchQuery: current.searchParams.get('q') || undefined };
   }
