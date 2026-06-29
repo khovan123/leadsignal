@@ -8,6 +8,9 @@ import {
   getExtensionSessionStateAction,
 } from '../auth-actions';
 
+const FLOW_LOCK_KEY = 'ls_extension_login_flow_started_at';
+const FLOW_LOCK_TTL_MS = 15_000;
+
 type ExtensionState = {
   installed: boolean;
   paired: boolean;
@@ -32,6 +35,18 @@ type ExtensionMessage = {
   workspaceId?: string;
 };
 
+function acquireFlowLock() {
+  const now = Date.now();
+  const startedAt = Number(sessionStorage.getItem(FLOW_LOCK_KEY) ?? 0);
+  if (startedAt && now - startedAt < FLOW_LOCK_TTL_MS) return false;
+  sessionStorage.setItem(FLOW_LOCK_KEY, String(now));
+  return true;
+}
+
+function releaseFlowLock() {
+  sessionStorage.removeItem(FLOW_LOCK_KEY);
+}
+
 export function ExtensionLoginClient({
   locale,
   initialError,
@@ -43,10 +58,26 @@ export function ExtensionLoginClient({
   const [session, setSession] = useState<SessionState | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
   const [error, setError] = useState(initialError ? decodeURIComponent(initialError) : '');
   const ticketRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const autoStartedRef = useRef(false);
+
+  function handleFlowError(message: string) {
+    autoStartedRef.current = false;
+    releaseFlowLock();
+    setBusy(false);
+
+    if (message.toLowerCase().includes('rate limit')) {
+      setError('Đã gửi quá nhiều yêu cầu. Hãy chờ khoảng 60 giây rồi thử lại.');
+      setCooldown(true);
+      window.setTimeout(() => setCooldown(false), 60_000);
+      return;
+    }
+
+    setError(message);
+  }
 
   function requestAuthentication() {
     setBusy(true);
@@ -62,9 +93,7 @@ export function ExtensionLoginClient({
     setError('');
     const result = await createExtensionPairingCodeAction();
     if (!result.ok || !result.pairingCode) {
-      setBusy(false);
-      autoStartedRef.current = false;
-      setError(result.error ?? 'Không thể ghép nối extension.');
+      handleFlowError(result.error ?? 'Không thể ghép nối extension.');
       return;
     }
 
@@ -84,6 +113,8 @@ export function ExtensionLoginClient({
   function startAutomaticFlow(current: ExtensionState, currentSession: SessionState) {
     if (autoStartedRef.current) return;
     if (!currentSession.authenticated || !currentSession.workspaceId) return;
+    if (!acquireFlowLock()) return;
+
     autoStartedRef.current = true;
     if (current.paired) requestAuthentication();
     else void pairFromCurrentSession();
@@ -112,9 +143,7 @@ export function ExtensionLoginClient({
 
       if (message.type === 'LEADSIGNAL_EXTENSION_PAIR_RESULT') {
         if (!message.ok) {
-          autoStartedRef.current = false;
-          setBusy(false);
-          setError(message.error ?? 'Không thể ghép nối extension.');
+          handleFlowError(message.error ?? 'Không thể ghép nối extension.');
           return;
         }
         setState((current) => ({
@@ -129,12 +158,13 @@ export function ExtensionLoginClient({
       }
 
       if (message.type === 'LEADSIGNAL_EXTENSION_AUTH_RESULT') {
-        setBusy(false);
         if (!message.ok || !message.ticket) {
-          autoStartedRef.current = false;
-          setError(message.error ?? 'Extension không thể xác thực thiết bị.');
+          handleFlowError(message.error ?? 'Extension không thể xác thực thiết bị.');
           return;
         }
+
+        document.cookie =
+          'ls_extension_login_complete=1; Path=/; SameSite=Lax; Max-Age=60';
         if (ticketRef.current) ticketRef.current.value = message.ticket;
         formRef.current?.requestSubmit();
       }
@@ -165,7 +195,8 @@ export function ExtensionLoginClient({
   }, []);
 
   function retry() {
-    if (!session?.authenticated || !session.workspaceId) return;
+    if (!session?.authenticated || !session.workspaceId || cooldown) return;
+    releaseFlowLock();
     autoStartedRef.current = false;
     startAutomaticFlow(state, session);
   }
@@ -236,11 +267,11 @@ export function ExtensionLoginClient({
             </div>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || cooldown}
               onClick={retry}
               className="w-full rounded-lg bg-violet-600 px-4 py-2 font-medium disabled:opacity-50"
             >
-              {busy ? 'Đang xử lý…' : 'Thử lại'}
+              {busy ? 'Đang xử lý…' : cooldown ? 'Chờ 60 giây' : 'Thử lại'}
             </button>
           </div>
         )}
