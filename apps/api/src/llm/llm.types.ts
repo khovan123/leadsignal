@@ -5,7 +5,7 @@ export interface StrategyConnection {
   id: string;
   provider: LlmProvider;
   credential?: string;
-  baseUrl?: string | null;
+  baseUrl?: any;
 }
 
 export interface StrategyRequest {
