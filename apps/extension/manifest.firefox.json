@@ -16,7 +16,7 @@
   ],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["crypto.js", "api.js", "background.js"]
   },
   "content_scripts": [
     {
