@@ -35,8 +35,9 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Capture rendered Reddit posts to LeadSignal",
-    "default_icon": "icon-firefox.svg"
+    "default_title": "Open LeadSignal",
+    "default_icon": "icon-firefox.svg",
+    "default_popup": "popup.html"
   },
   "browser_specific_settings": {
     "gecko": {
