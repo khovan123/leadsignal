@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Headers,
@@ -27,9 +28,10 @@ export class SessionController {
     @Headers('user-agent') userAgent?: string,
     @Ip() ip?: string,
   ) {
-    return this.commands.execute(
-      new RegisterUserCommand(body, { userAgent, ip }),
-    );
+    if (!body.password || body.password.length < 12) {
+      throw new BadRequestException('Registration secret must be at least 12 characters');
+    }
+    return this.commands.execute(new RegisterUserCommand(body, { userAgent, ip }));
   }
 
   @Post('login')
