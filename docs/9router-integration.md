@@ -78,3 +78,7 @@ http://127.0.0.1:20128/v1
 ```
 
 For translated subscription routes that reject OpenAI `response_format`, LeadSignal retries once without that field.
+
+## CI validation
+
+Every push to the open pull request validates dependency installation, Prisma generation and migration deployment, application build, unit tests, and API E2E tests. Runtime calls to 9Router are not required during CI; the integration is exercised through the OpenAI-compatible strategy boundary.
