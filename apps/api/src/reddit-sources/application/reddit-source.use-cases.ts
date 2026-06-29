@@ -12,6 +12,12 @@ import {
   type SaveRedditSourceInput,
 } from '../domain/reddit-source.repository';
 
+function assertSupportedSourceType(input: SaveRedditSourceInput) {
+  if (String(input.type ?? '').trim().toUpperCase() === 'LATEST') {
+    throw new BadRequestException('LATEST Reddit sources are no longer supported');
+  }
+}
+
 export class ListRedditSourcesQuery {
   constructor(
     readonly workspaceId: string,
@@ -104,6 +110,7 @@ export class CreateRedditSourceHandler
   ) {}
 
   async execute(command: CreateRedditSourceCommand) {
+    assertSupportedSourceType(command.input);
     await this.repository.assertWorkspaceMember(command.workspaceId, command.userId);
     return this.repository.create(
       command.workspaceId,
@@ -123,6 +130,7 @@ export class UpdateRedditSourceHandler
   ) {}
 
   async execute(command: UpdateRedditSourceCommand) {
+    assertSupportedSourceType(command.input);
     await this.repository.assertWorkspaceMember(command.workspaceId, command.userId);
     return this.repository.update(
       command.workspaceId,
