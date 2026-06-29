@@ -1,20 +1,20 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { Browser, BrowserContext, Page } from 'playwright';
-import { chromium } from 'playwright';
-import { PrismaService } from '../database/prisma.service';
-import { QueueService } from '../queue/queue.service';
-import { enrichRedditPostDetails } from './reddit-detail-enricher';
+import { Logger } from "@nestjs/common";
+import type { Browser, BrowserContext, Page } from "playwright";
+import { chromium } from "playwright";
+import { PrismaService } from "../database/prisma.service";
+import { QueueService } from "../queue/queue.service";
+import { enrichRedditPostDetails } from "./reddit-detail-enricher";
 import {
   extractRedditCards,
   REDDIT_POST_SELECTOR,
   type RedditPageCard,
-} from './reddit-page-parser';
+} from "./reddit-page-parser";
 import type {
   RedditPublicCollectionResult,
   RedditPublicPost,
   RedditPublicSource,
-} from './reddit-public.types';
-import { resolvePublicRedditSourceUrl } from './reddit-source-url';
+} from "./reddit-public.types";
+import { resolvePublicRedditSourceUrl } from "./reddit-source-url";
 
 export interface RedditCollectionFilter {
   workspaceId?: string;
@@ -37,7 +37,7 @@ interface SourceConfigRow {
 
 function enabled(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined) return defaultValue;
-  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -45,13 +45,12 @@ function positiveInteger(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-@Injectable()
 export class RedditPublicCollectorService {
   private readonly logger = new Logger(RedditPublicCollectorService.name);
 
   constructor(
-    @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(QueueService) private readonly queue: QueueService,
+    private readonly prisma: PrismaService,
+    private readonly queue: QueueService,
   ) {}
 
   async collect(
@@ -73,7 +72,7 @@ export class RedditPublicCollectorService {
         ...(filter.workspaceId ? { workspaceId: filter.workspaceId } : {}),
         ...(filter.sourceIds?.length ? { id: { in: filter.sourceIds } } : {}),
       },
-      orderBy: [{ workspaceId: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ workspaceId: "asc" }, { createdAt: "asc" }],
     });
     const sources: RedditPublicSource[] = [];
     for (const source of sourceRecords) {
@@ -94,19 +93,21 @@ export class RedditPublicCollectorService {
     let context: BrowserContext | null = null;
     let posts = 0;
     const failures: Array<{ sourceId: string; message: string }> = [];
-    const sourceResults: NonNullable<RedditPublicCollectionResult['sourceResults']> = [];
+    const sourceResults: NonNullable<
+      RedditPublicCollectionResult["sourceResults"]
+    > = [];
     const workspaces = new Set(sources.map((source) => source.workspaceId));
     const publicSources = sources.filter(
-      (source) => source.collectionMode.toUpperCase() === 'PUBLIC',
+      (source) => source.collectionMode.toUpperCase() === "PUBLIC",
     );
 
     for (const source of sources) {
-      if (source.collectionMode.toUpperCase() === 'PUBLIC') continue;
-      const message = 'Source requires the paired browser extension';
-      await this.updateStatus(source.id, 'EXTENSION_REQUIRED', 0, message);
+      if (source.collectionMode.toUpperCase() === "PUBLIC") continue;
+      const message = "Source requires the paired browser extension";
+      await this.updateStatus(source.id, "EXTENSION_REQUIRED", 0, message);
       sourceResults.push({
         sourceId: source.id,
-        status: 'EXTENSION_REQUIRED',
+        status: "EXTENSION_REQUIRED",
         collected: 0,
         requested: source.targetPostCount,
         message,
@@ -128,15 +129,14 @@ export class RedditPublicCollectorService {
       context = await browser.newContext({
         userAgent:
           process.env.REDDIT_CRAWLER_USER_AGENT ??
-          'LeadSignalPublicCollector/1.0',
-        locale: process.env.REDDIT_CRAWLER_LOCALE ?? 'en-US',
-        timezoneId:
-          process.env.REDDIT_CRAWLER_TIMEZONE ?? 'Asia/Ho_Chi_Minh',
+          "LeadSignalPublicCollector/1.0",
+        locale: process.env.REDDIT_CRAWLER_LOCALE ?? "en-US",
+        timezoneId: process.env.REDDIT_CRAWLER_TIMEZONE ?? "Asia/Ho_Chi_Minh",
         viewport: { width: 1440, height: 1000 },
       });
 
       for (const source of publicSources) {
-        await this.updateStatus(source.id, 'RUNNING', 0, null);
+        await this.updateStatus(source.id, "RUNNING", 0, null);
         try {
           const collected = await this.collectSource(context, source);
           let discovered = 0;
@@ -147,7 +147,7 @@ export class RedditPublicCollectorService {
             }
           }
           const status =
-            collected.length >= source.targetPostCount ? 'DONE' : 'PARTIAL';
+            collected.length >= source.targetPostCount ? "DONE" : "PARTIAL";
           await this.updateStatus(source.id, status, collected.length, null);
           sourceResults.push({
             sourceId: source.id,
@@ -156,20 +156,21 @@ export class RedditPublicCollectorService {
             requested: source.targetPostCount,
             message:
               discovered === 0 && collected.length > 0
-                ? 'Posts refreshed; no new discoveries'
+                ? "Posts refreshed; no new discoveries"
                 : undefined,
           });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           failures.push({ sourceId: source.id, message });
           sourceResults.push({
             sourceId: source.id,
-            status: 'FAILED',
+            status: "FAILED",
             collected: 0,
             requested: source.targetPostCount,
             message,
           });
-          await this.updateStatus(source.id, 'FAILED', 0, message);
+          await this.updateStatus(source.id, "FAILED", 0, message);
           this.logger.warn(`Reddit source ${source.id} failed: ${message}`);
         }
       }
@@ -210,8 +211,8 @@ export class RedditPublicCollectorService {
     `;
     return (
       rows[0] ?? {
-        sort: 'NEW',
-        timeRange: 'ALL',
+        sort: "NEW",
+        timeRange: "ALL",
         targetPostCount: Math.min(
           positiveInteger(process.env.REDDIT_CRAWLER_POSTS_PER_SOURCE, 50),
           2000,
@@ -230,7 +231,7 @@ export class RedditPublicCollectorService {
         detailEnabled: true,
         commentsTopN: 0,
         collectionMode:
-          sourceType.toUpperCase() === 'FOLLOWING' ? 'EXTENSION' : 'PUBLIC',
+          sourceType.toUpperCase() === "FOLLOWING" ? "EXTENSION" : "PUBLIC",
       }
     );
   }
@@ -305,12 +306,7 @@ export class RedditPublicCollectorService {
         }
 
         if (posts.size >= target) break;
-        if (
-          posts.size === 0 &&
-          round >= 1 &&
-          source.subreddit &&
-          !oldReddit
-        ) {
+        if (posts.size === 0 && round >= 1 && source.subreddit && !oldReddit) {
           oldReddit = true;
           stalls = 0;
           await this.navigate(page, resolvePublicRedditSourceUrl(source, true));
@@ -321,13 +317,13 @@ export class RedditPublicCollectorService {
         stalls = posts.size === sizeBefore ? stalls + 1 : 0;
         if (stalls >= maxStalls) break;
 
-        if (page.url().includes('old.reddit.com')) {
+        if (page.url().includes("old.reddit.com")) {
           const next = page
             .locator('span.next-button a, a[rel="nofollow next"]')
             .first();
           if (!(await next.isVisible().catch(() => false))) break;
           await Promise.all([
-            page.waitForLoadState('domcontentloaded').catch(() => undefined),
+            page.waitForLoadState("domcontentloaded").catch(() => undefined),
             next.click(),
           ]);
           await this.waitForCards(page);
@@ -337,8 +333,8 @@ export class RedditPublicCollectorService {
         await page.evaluate((selector) => {
           const candidates = Array.from(document.querySelectorAll(selector));
           candidates.at(-1)?.scrollIntoView({
-            block: 'end',
-            behavior: 'instant',
+            block: "end",
+            behavior: "instant",
           });
           window.scrollBy(0, Math.floor(window.innerHeight * 0.9));
         }, REDDIT_POST_SELECTOR);
@@ -370,7 +366,7 @@ export class RedditPublicCollectorService {
 
   private async navigate(page: Page, url: string): Promise<void> {
     const response = await page.goto(url, {
-      waitUntil: 'domcontentloaded',
+      waitUntil: "domcontentloaded",
       timeout: positiveInteger(
         process.env.REDDIT_CRAWLER_NAVIGATION_TIMEOUT_MS,
         30_000,
@@ -400,20 +396,20 @@ export class RedditPublicCollectorService {
     source: RedditPublicSource,
     card: RedditPageCard,
   ): RedditPublicPost | null {
-    const rawId = card.id.startsWith('t3_')
+    const rawId = card.id.startsWith("t3_")
       ? card.id
       : card.permalink.match(/\/comments\/([a-z0-9]+)(?:\/|$)/i)?.[1];
     if (!rawId) return null;
-    const externalPostId = rawId.startsWith('t3_') ? rawId : `t3_${rawId}`;
+    const externalPostId = rawId.startsWith("t3_") ? rawId : `t3_${rawId}`;
     const postedAt = card.createdAt ? new Date(card.createdAt) : new Date();
 
     return {
       externalPostId,
       canonicalUrl: card.permalink,
-      subreddit: card.subreddit ?? source.subreddit ?? 'unknown',
+      subreddit: card.subreddit ?? source.subreddit ?? "unknown",
       authorUsername: card.author ?? null,
       title: card.title,
-      body: card.body ?? '',
+      body: card.body ?? "",
       score: card.score ?? 0,
       commentCount: card.commentCount ?? 0,
       postedAt: Number.isNaN(postedAt.getTime()) ? new Date() : postedAt,
