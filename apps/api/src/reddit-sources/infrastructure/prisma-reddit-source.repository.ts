@@ -1,8 +1,5 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
 import {
   REDDIT_SOURCE_SORTS,
@@ -20,6 +17,7 @@ import {
 interface RedditSourceRow {
   id: string;
   workspaceId: string;
+  ownerUserId: string;
   name: string;
   type: string;
   subreddit: string | null;
@@ -59,11 +57,15 @@ const DEFAULT_NAMES: Record<RedditSourceType, string> = {
 export class PrismaRedditSourceRepository implements IRedditSourceRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(workspaceId: string): Promise<RedditSourceConfiguration[]> {
+  async list(
+    workspaceId: string,
+    userId: string,
+  ): Promise<RedditSourceConfiguration[]> {
     const rows = await this.prisma.$queryRaw<RedditSourceRow[]>`
       SELECT
         s.id,
         s."workspaceId",
+        s."ownerUserId",
         s.name,
         s.type,
         s.subreddit,
@@ -79,7 +81,10 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
         COALESCE(c."includeNsfw", false) AS "includeNsfw",
         COALESCE(c."detailEnabled", true) AS "detailEnabled",
         COALESCE(c."commentsTopN", 0) AS "commentsTopN",
-        COALESCE(c."collectionMode", CASE WHEN UPPER(s.type)='FOLLOWING' THEN 'EXTENSION' ELSE 'PUBLIC' END) AS "collectionMode",
+        COALESCE(
+          c."collectionMode",
+          CASE WHEN UPPER(s.type)='FOLLOWING' THEN 'EXTENSION' ELSE 'PUBLIC' END
+        ) AS "collectionMode",
         c."lastRunAt",
         COALESCE(c."lastStatus", 'IDLE') AS "lastStatus",
         COALESCE(c."lastCollected", 0) AS "lastCollected",
@@ -89,6 +94,7 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
       FROM "RedditSource" s
       LEFT JOIN "RedditSourceConfig" c ON c."sourceId"=s.id
       WHERE s."workspaceId"=${workspaceId}::uuid
+        AND s."ownerUserId"=${userId}::uuid
       ORDER BY s."createdAt" ASC
     `;
     return rows.map((row) => this.mapRow(row));
@@ -96,12 +102,14 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
 
   async get(
     workspaceId: string,
+    userId: string,
     sourceId: string,
   ): Promise<RedditSourceConfiguration | null> {
     const rows = await this.prisma.$queryRaw<RedditSourceRow[]>`
       SELECT
         s.id,
         s."workspaceId",
+        s."ownerUserId",
         s.name,
         s.type,
         s.subreddit,
@@ -117,7 +125,10 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
         COALESCE(c."includeNsfw", false) AS "includeNsfw",
         COALESCE(c."detailEnabled", true) AS "detailEnabled",
         COALESCE(c."commentsTopN", 0) AS "commentsTopN",
-        COALESCE(c."collectionMode", CASE WHEN UPPER(s.type)='FOLLOWING' THEN 'EXTENSION' ELSE 'PUBLIC' END) AS "collectionMode",
+        COALESCE(
+          c."collectionMode",
+          CASE WHEN UPPER(s.type)='FOLLOWING' THEN 'EXTENSION' ELSE 'PUBLIC' END
+        ) AS "collectionMode",
         c."lastRunAt",
         COALESCE(c."lastStatus", 'IDLE') AS "lastStatus",
         COALESCE(c."lastCollected", 0) AS "lastCollected",
@@ -126,7 +137,9 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
         s."updatedAt"
       FROM "RedditSource" s
       LEFT JOIN "RedditSourceConfig" c ON c."sourceId"=s.id
-      WHERE s.id=${sourceId}::uuid AND s."workspaceId"=${workspaceId}::uuid
+      WHERE s.id=${sourceId}::uuid
+        AND s."workspaceId"=${workspaceId}::uuid
+        AND s."ownerUserId"=${userId}::uuid
       LIMIT 1
     `;
     return rows[0] ? this.mapRow(rows[0]) : null;
@@ -134,55 +147,63 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
 
   async create(
     workspaceId: string,
+    userId: string,
     input: SaveRedditSourceInput,
   ): Promise<RedditSourceConfiguration> {
     const value = this.normalize(input);
-    const source = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.redditSource.create({
-        data: {
-          workspaceId,
-          name: value.name,
-          type: value.type,
-          subreddit: value.subreddit,
-          searchQuery: value.searchQuery,
-          enabled: value.enabled,
-        },
-      });
+    const sourceId = randomUUID();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO "RedditSource" (
+          id,"workspaceId","ownerUserId",name,type,subreddit,"searchQuery",enabled,"createdAt","updatedAt"
+        ) VALUES (
+          ${sourceId}::uuid,${workspaceId}::uuid,${userId}::uuid,${value.name},${value.type},
+          ${value.subreddit},${value.searchQuery},${value.enabled},NOW(),NOW()
+        )
+      `;
       await tx.$executeRaw`
         INSERT INTO "RedditSourceConfig" (
           "sourceId",sort,"timeRange","targetPostCount","maxScrolls","maxStallRounds",
           "includePromoted","includePinned","includeNsfw","detailEnabled","commentsTopN",
           "collectionMode","updatedAt"
         ) VALUES (
-          ${created.id}::uuid,${value.sort},${value.timeRange},${value.targetPostCount},
+          ${sourceId}::uuid,${value.sort},${value.timeRange},${value.targetPostCount},
           ${value.maxScrolls},${value.maxStallRounds},${value.includePromoted},${value.includePinned},
           ${value.includeNsfw},${value.detailEnabled},${value.commentsTopN},${value.collectionMode},NOW()
         )
       `;
-      return created;
     });
-    return (await this.get(workspaceId, source.id))!;
+
+    return (await this.get(workspaceId, userId, sourceId))!;
   }
 
   async update(
     workspaceId: string,
+    userId: string,
     sourceId: string,
     input: SaveRedditSourceInput,
   ): Promise<RedditSourceConfiguration> {
-    const current = await this.get(workspaceId, sourceId);
+    const current = await this.get(workspaceId, userId, sourceId);
     if (!current) throw new NotFoundException('Reddit source not found');
     const value = this.normalize(input, current);
+
     await this.prisma.$transaction(async (tx) => {
-      await tx.redditSource.update({
-        where: { id: sourceId },
-        data: {
-          name: value.name,
-          type: value.type,
-          subreddit: value.subreddit,
-          searchQuery: value.searchQuery,
-          enabled: value.enabled,
-        },
-      });
+      const updated = await tx.$executeRaw`
+        UPDATE "RedditSource"
+        SET
+          name=${value.name},
+          type=${value.type},
+          subreddit=${value.subreddit},
+          "searchQuery"=${value.searchQuery},
+          enabled=${value.enabled},
+          "updatedAt"=NOW()
+        WHERE id=${sourceId}::uuid
+          AND "workspaceId"=${workspaceId}::uuid
+          AND "ownerUserId"=${userId}::uuid
+      `;
+      if (updated !== 1) throw new NotFoundException('Reddit source not found');
+
       await tx.$executeRaw`
         INSERT INTO "RedditSourceConfig" (
           "sourceId",sort,"timeRange","targetPostCount","maxScrolls","maxStallRounds",
@@ -208,23 +229,31 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
           "updatedAt"=NOW()
       `;
     });
-    return (await this.get(workspaceId, sourceId))!;
+
+    return (await this.get(workspaceId, userId, sourceId))!;
   }
 
-  async remove(workspaceId: string, sourceId: string): Promise<void> {
-    const result = await this.prisma.redditSource.deleteMany({
-      where: { id: sourceId, workspaceId },
-    });
-    if (result.count !== 1) throw new NotFoundException('Reddit source not found');
+  async remove(
+    workspaceId: string,
+    userId: string,
+    sourceId: string,
+  ): Promise<void> {
+    const deleted = await this.prisma.$executeRaw`
+      DELETE FROM "RedditSource"
+      WHERE id=${sourceId}::uuid
+        AND "workspaceId"=${workspaceId}::uuid
+        AND "ownerUserId"=${userId}::uuid
+    `;
+    if (deleted !== 1) throw new NotFoundException('Reddit source not found');
   }
 
-  async assertCanManage(workspaceId: string, userId: string): Promise<void> {
+  async assertWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
     const membership = await this.prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId } },
-      select: { role: true },
+      select: { id: true },
     });
-    if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
-      throw new ForbiddenException('Only workspace owners and admins can manage Reddit sources');
+    if (!membership) {
+      throw new ForbiddenException('Workspace membership is required');
     }
   }
 
@@ -232,13 +261,19 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
     input: SaveRedditSourceInput,
     current?: RedditSourceConfiguration,
   ) {
-    const type = String(input.type ?? current?.type ?? 'SUBREDDIT').trim().toUpperCase();
+    const type = String(input.type ?? current?.type ?? 'SUBREDDIT')
+      .trim()
+      .toUpperCase();
     if (!REDDIT_SOURCE_TYPES.includes(type as RedditSourceType)) {
       throw new BadRequestException('Unsupported Reddit source type');
     }
     const typed = type as RedditSourceType;
-    const subreddit = this.clean(input.subreddit ?? current?.subreddit, 100)?.replace(/^r\//i, '') ?? null;
-    let searchQuery = this.clean(input.searchQuery ?? current?.searchQuery, 2000) ?? null;
+    const subreddit =
+      this.clean(input.subreddit ?? current?.subreddit, 100)?.replace(/^r\//i, '') ??
+      null;
+    let searchQuery =
+      this.clean(input.searchQuery ?? current?.searchQuery, 2000) ?? null;
+
     if (typed === 'SUBREDDIT' && !subreddit) {
       throw new BadRequestException('Subreddit name is required');
     }
@@ -249,30 +284,36 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
       if (!searchQuery) throw new BadRequestException('Reddit URL is required');
       searchQuery = this.validateRedditUrl(searchQuery);
     }
-    if (!['SUBREDDIT'].includes(typed)) {
-      // Preserve no unrelated subreddit value on built-in/search URL sources.
-      if (input.type !== undefined || !current) {
-        // eslint-disable-next-line no-param-reassign
-      }
-    }
+
     const normalizedSubreddit = typed === 'SUBREDDIT' ? subreddit : null;
-    const normalizedQuery = ['SEARCH', 'CUSTOM_URL'].includes(typed) ? searchQuery : null;
-    const sortValue = String(input.sort ?? current?.sort ?? (typed === 'SUBREDDIT' ? 'NEW' : 'HOT')).toUpperCase();
+    const normalizedQuery = ['SEARCH', 'CUSTOM_URL'].includes(typed)
+      ? searchQuery
+      : null;
+    const sortValue = String(
+      input.sort ?? current?.sort ?? (typed === 'SUBREDDIT' ? 'NEW' : 'HOT'),
+    ).toUpperCase();
     if (!REDDIT_SOURCE_SORTS.includes(sortValue as RedditSourceSort)) {
       throw new BadRequestException('Unsupported Reddit sort');
     }
-    const timeValue = String(input.timeRange ?? current?.timeRange ?? 'ALL').toUpperCase();
+    const timeValue = String(
+      input.timeRange ?? current?.timeRange ?? 'ALL',
+    ).toUpperCase();
     if (!REDDIT_SOURCE_TIME_RANGES.includes(timeValue as RedditSourceTimeRange)) {
       throw new BadRequestException('Unsupported Reddit time range');
     }
-    const requestedMode = String(input.collectionMode ?? current?.collectionMode ?? 'PUBLIC').toUpperCase();
+    const requestedMode = String(
+      input.collectionMode ?? current?.collectionMode ?? 'PUBLIC',
+    ).toUpperCase();
     if (!['PUBLIC', 'EXTENSION'].includes(requestedMode)) {
       throw new BadRequestException('collectionMode must be PUBLIC or EXTENSION');
     }
-    const collectionMode: RedditCollectionMode = typed === 'FOLLOWING'
-      ? 'EXTENSION'
-      : (requestedMode as RedditCollectionMode);
-    const name = this.clean(input.name ?? current?.name, 120) ?? this.defaultName(typed, normalizedSubreddit, normalizedQuery);
+    const collectionMode: RedditCollectionMode =
+      typed === 'FOLLOWING'
+        ? 'EXTENSION'
+        : (requestedMode as RedditCollectionMode);
+    const name =
+      this.clean(input.name ?? current?.name, 120) ??
+      this.defaultName(typed, normalizedSubreddit, normalizedQuery);
 
     return {
       name,
@@ -282,19 +323,59 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
       enabled: this.boolean(input.enabled, current?.enabled ?? true),
       sort: sortValue as RedditSourceSort,
       timeRange: timeValue as RedditSourceTimeRange,
-      targetPostCount: this.integer(input.targetPostCount, current?.targetPostCount ?? 50, 1, 2000, 'targetPostCount'),
-      maxScrolls: this.integer(input.maxScrolls, current?.maxScrolls ?? 20, 1, 100, 'maxScrolls'),
-      maxStallRounds: this.integer(input.maxStallRounds, current?.maxStallRounds ?? 4, 1, 12, 'maxStallRounds'),
-      includePromoted: this.boolean(input.includePromoted, current?.includePromoted ?? false),
-      includePinned: this.boolean(input.includePinned, current?.includePinned ?? false),
-      includeNsfw: this.boolean(input.includeNsfw, current?.includeNsfw ?? false),
-      detailEnabled: this.boolean(input.detailEnabled, current?.detailEnabled ?? true),
-      commentsTopN: this.integer(input.commentsTopN, current?.commentsTopN ?? 0, 0, 50, 'commentsTopN'),
+      targetPostCount: this.integer(
+        input.targetPostCount,
+        current?.targetPostCount ?? 50,
+        1,
+        2000,
+        'targetPostCount',
+      ),
+      maxScrolls: this.integer(
+        input.maxScrolls,
+        current?.maxScrolls ?? 20,
+        1,
+        100,
+        'maxScrolls',
+      ),
+      maxStallRounds: this.integer(
+        input.maxStallRounds,
+        current?.maxStallRounds ?? 4,
+        1,
+        12,
+        'maxStallRounds',
+      ),
+      includePromoted: this.boolean(
+        input.includePromoted,
+        current?.includePromoted ?? false,
+      ),
+      includePinned: this.boolean(
+        input.includePinned,
+        current?.includePinned ?? false,
+      ),
+      includeNsfw: this.boolean(
+        input.includeNsfw,
+        current?.includeNsfw ?? false,
+      ),
+      detailEnabled: this.boolean(
+        input.detailEnabled,
+        current?.detailEnabled ?? true,
+      ),
+      commentsTopN: this.integer(
+        input.commentsTopN,
+        current?.commentsTopN ?? 0,
+        0,
+        50,
+        'commentsTopN',
+      ),
       collectionMode,
     };
   }
 
-  private defaultName(type: RedditSourceType, subreddit: string | null, query: string | null) {
+  private defaultName(
+    type: RedditSourceType,
+    subreddit: string | null,
+    query: string | null,
+  ) {
     if (type === 'SUBREDDIT' && subreddit) return `r/${subreddit}`;
     if (type === 'SEARCH' && query) return `Search: ${query.slice(0, 80)}`;
     if (type === 'CUSTOM_URL') return 'Custom Reddit URL';
@@ -321,7 +402,9 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
     if (typeof value !== 'string') return undefined;
     const result = value.trim();
     if (!result) return undefined;
-    if (result.length > max) throw new BadRequestException(`Text exceeds ${max} characters`);
+    if (result.length > max) {
+      throw new BadRequestException(`Text exceeds ${max} characters`);
+    }
     return result;
   }
 
@@ -335,7 +418,9 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
     if (value === undefined || value === null || value === '') return fallback;
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-      throw new BadRequestException(`${field} must be an integer between ${min} and ${max}`);
+      throw new BadRequestException(
+        `${field} must be an integer between ${min} and ${max}`,
+      );
     }
     return parsed;
   }
@@ -343,7 +428,9 @@ export class PrismaRedditSourceRepository implements IRedditSourceRepository {
   private boolean(value: unknown, fallback: boolean): boolean {
     if (value === undefined || value === null) return fallback;
     if (typeof value === 'boolean') return value;
-    if (typeof value === 'string') return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+    if (typeof value === 'string') {
+      return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+    }
     return Boolean(value);
   }
 
