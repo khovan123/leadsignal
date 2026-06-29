@@ -17,7 +17,8 @@ export class LlmService {
     private readonly gemini: GeminiStrategy,
   ) {}
 
-  list(workspaceId: string) {
+  async list(workspaceId: string) {
+    await this.syncRoutes(workspaceId);
     return this.prisma.llmConnection.findMany({
       where: { workspaceId, deletedAt: null },
       select: {
@@ -186,24 +187,13 @@ export class LlmService {
         ? this.anthropic
         : this.gemini;
 
-    const oauth = await this.prisma.$queryRaw<{ exists: boolean }[]>`
-      SELECT EXISTS(
-        SELECT 1 FROM "ProviderOAuthCredential"
-        WHERE "connectionId"=${connection.id}::uuid
-      ) AS exists
-    `;
-    const baseUrl =
-      oauth[0]?.exists && connection.provider === LlmProvider.GEMINI
-        ? googleVertexBaseUrl()
-        : connection.baseUrl;
-
     try {
       await strategy.verify(
         {
           id: connection.id,
           provider: connection.provider,
           credential,
-          baseUrl,
+          baseUrl: connection.baseUrl,
         },
         connection.models[0]?.model,
       );
@@ -229,13 +219,4 @@ export class LlmService {
       throw error;
     }
   }
-}
-
-export function googleVertexBaseUrl() {
-  const project = process.env.GOOGLE_VERTEX_PROJECT_ID;
-  if (!project) {
-    throw new Error('GOOGLE_VERTEX_PROJECT_ID is required for Google OAuth');
-  }
-  const location = process.env.GOOGLE_VERTEX_LOCATION ?? 'us-central1';
-  return `https://${location}-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(project)}/locations/${encodeURIComponent(location)}/publishers/google/models`;
 }
