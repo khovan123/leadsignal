@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   createExtensionPairingCodeAction,
   extensionLoginAction,
+  getExtensionSessionStateAction,
 } from '../auth-actions';
 
 type ExtensionState = {
@@ -13,6 +14,11 @@ type ExtensionState = {
   deviceId?: string;
   workspaceId?: string;
   version?: string;
+};
+
+type SessionState = {
+  authenticated: boolean;
+  workspaceId: string | null;
 };
 
 type ExtensionMessage = {
@@ -34,6 +40,7 @@ export function ExtensionLoginClient({
   initialError?: string;
 }) {
   const [state, setState] = useState<ExtensionState>({ installed: false, paired: false });
+  const [session, setSession] = useState<SessionState | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError ? decodeURIComponent(initialError) : '');
@@ -56,10 +63,8 @@ export function ExtensionLoginClient({
     const result = await createExtensionPairingCodeAction();
     if (!result.ok || !result.pairingCode) {
       setBusy(false);
-      setError(
-        result.error ??
-          'Không thể tạo pairing code từ phiên đăng nhập hiện tại. Hãy đăng nhập bằng email trước.',
-      );
+      autoStartedRef.current = false;
+      setError(result.error ?? 'Không thể ghép nối extension.');
       return;
     }
 
@@ -76,8 +81,9 @@ export function ExtensionLoginClient({
     );
   }
 
-  function startAutomaticFlow(current: ExtensionState) {
+  function startAutomaticFlow(current: ExtensionState, currentSession: SessionState) {
     if (autoStartedRef.current) return;
+    if (!currentSession.authenticated || !currentSession.workspaceId) return;
     autoStartedRef.current = true;
     if (current.paired) requestAuthentication();
     else void pairFromCurrentSession();
@@ -85,20 +91,22 @@ export function ExtensionLoginClient({
 
   useEffect(() => {
     let detected = false;
+    let currentSession: SessionState | null = null;
+
     const onMessage = (event: MessageEvent<ExtensionMessage>) => {
       if (event.source !== window || event.origin !== window.location.origin || !event.data?.type) return;
       const message = event.data;
 
       if (message.type === 'LEADSIGNAL_EXTENSION_PONG') {
         detected = true;
-        setChecking(false);
         const nextState = {
           installed: true,
           paired: Boolean(message.state?.paired),
           ...message.state,
         } as ExtensionState;
         setState(nextState);
-        startAutomaticFlow(nextState);
+        setChecking(false);
+        if (currentSession) startAutomaticFlow(nextState, currentSession);
         return;
       }
 
@@ -133,17 +141,22 @@ export function ExtensionLoginClient({
     };
 
     window.addEventListener('message', onMessage);
-    window.postMessage(
-      { type: 'LEADSIGNAL_EXTENSION_PING', requestId: crypto.randomUUID() },
-      window.location.origin,
-    );
+
+    void getExtensionSessionStateAction().then((value) => {
+      currentSession = value;
+      setSession(value);
+      window.postMessage(
+        { type: 'LEADSIGNAL_EXTENSION_PING', requestId: crypto.randomUUID() },
+        window.location.origin,
+      );
+    });
 
     const timeout = window.setTimeout(() => {
       if (!detected) {
         setChecking(false);
         setState({ installed: false, paired: false });
       }
-    }, 2000);
+    }, 2500);
 
     return () => {
       window.clearTimeout(timeout);
@@ -152,29 +165,53 @@ export function ExtensionLoginClient({
   }, []);
 
   function retry() {
+    if (!session?.authenticated || !session.workspaceId) return;
     autoStartedRef.current = false;
-    if (state.paired) requestAuthentication();
-    else void pairFromCurrentSession();
+    startAutomaticFlow(state, session);
   }
+
+  const needsAccount = session !== null && !session.authenticated;
+  const needsWorkspace = session?.authenticated && !session.workspaceId;
 
   return (
     <div className="mx-auto max-w-md space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold">Đăng nhập bằng LeadSignal Extension</h1>
+        <h1 className="text-3xl font-semibold">Kết nối LeadSignal Extension</h1>
         <p className="mt-2 text-slate-400">
-          LeadSignal sử dụng phiên đăng nhập hiện tại để tự ghép nối extension, sau đó xác thực thiết bị bằng chữ ký số.
+          Tạo hoặc đăng nhập tài khoản LeadSignal trước. Sau đó hệ thống sẽ tự ghép nối extension bằng phiên đăng nhập hiện tại.
         </p>
       </div>
 
-      {error && (
+      {error && !needsAccount && (
         <div className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-red-300">
           {error}
         </div>
       )}
 
       <div className="panel space-y-4 p-6">
-        {checking ? (
-          <p className="text-sm text-slate-300">Đang kiểm tra extension…</p>
+        {checking || session === null ? (
+          <p className="text-sm text-slate-300">Đang kiểm tra tài khoản và extension…</p>
+        ) : needsAccount ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-700 bg-amber-950/30 p-4">
+              <p className="font-medium text-amber-200">Bạn chưa có phiên đăng nhập LeadSignal</p>
+              <p className="mt-2 text-sm text-amber-100/80">
+                Extension không tạo tài khoản độc lập. Hãy tạo tài khoản trước, hệ thống sẽ quay lại đây và tự động ghép nối.
+              </p>
+            </div>
+            <Link
+              href={`/${locale}/register`}
+              className="block w-full rounded-lg bg-violet-600 px-4 py-2 text-center font-medium hover:bg-violet-500"
+            >
+              Tạo tài khoản
+            </Link>
+          </div>
+        ) : needsWorkspace ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-100">
+              Tài khoản đã đăng nhập nhưng chưa có workspace. Hãy hoàn tất đăng ký workspace hoặc tham gia bằng lời mời trước khi ghép nối extension.
+            </div>
+          </div>
         ) : !state.installed ? (
           <div className="space-y-4">
             <div className="rounded-lg border border-amber-700 bg-amber-950/30 p-4">
@@ -194,8 +231,8 @@ export function ExtensionLoginClient({
           <div className="space-y-4">
             <div className="rounded-lg border border-emerald-800 bg-emerald-950/30 p-4 text-sm text-emerald-200">
               {state.paired
-                ? 'Extension đã ghép nối. Đang xác thực và đăng nhập…'
-                : 'Đã phát hiện extension. Đang tự động ghép nối từ phiên đăng nhập hiện tại…'}
+                ? 'Extension đã ghép nối. Đang xác thực thiết bị…'
+                : 'Đã phát hiện extension. Đang tự động ghép nối với tài khoản hiện tại…'}
             </div>
             <button
               type="button"
