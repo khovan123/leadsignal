@@ -13,15 +13,10 @@ USING ranked_discoveries ranked
 WHERE target.id = ranked.id
   AND ranked.position > 1;
 
-DROP INDEX IF EXISTS "PostDiscovery_workspaceId_postId_sourceId_key";
-
 CREATE UNIQUE INDEX "PostDiscovery_workspaceId_postId_key"
   ON "PostDiscovery"("workspaceId", "postId");
 
-CREATE UNIQUE INDEX "PostDiscovery_workspaceId_postId_sourceId_key"
-  ON "PostDiscovery"("workspaceId", "postId", "sourceId");
-
--- Existing application upserts target the old source-scoped key. Normalize the
+-- Existing application upserts target the source-scoped key. Normalize the
 -- incoming source to the canonical workspace discovery before conflict handling.
 CREATE OR REPLACE FUNCTION "normalizePostDiscoverySource"()
 RETURNS trigger
