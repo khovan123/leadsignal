@@ -62,6 +62,7 @@ export function ExtensionLoginClient({
   const [error, setError] = useState(initialError ? decodeURIComponent(initialError) : '');
   const ticketRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const exchangeSubmittedRef = useRef(false);
   const autoStartedRef = useRef(false);
 
   function handleFlowError(message: string) {
@@ -121,6 +122,8 @@ export function ExtensionLoginClient({
   }
 
   useEffect(() => {
+    document.cookie = 'ls_extension_login_complete=; Path=/; Max-Age=0';
+
     let detected = false;
     let currentSession: SessionState | null = null;
 
@@ -163,10 +166,9 @@ export function ExtensionLoginClient({
           return;
         }
 
-        document.cookie =
-          'ls_extension_login_complete=1; Path=/; SameSite=Lax; Max-Age=60';
         if (ticketRef.current) ticketRef.current.value = message.ticket;
-        formRef.current?.requestSubmit();
+        exchangeSubmittedRef.current = true;
+        formRef.current?.submit();
       }
     };
 
@@ -199,6 +201,13 @@ export function ExtensionLoginClient({
     releaseFlowLock();
     autoStartedRef.current = false;
     startAutomaticFlow(state, session);
+  }
+
+  function handleExchangeFrameLoad() {
+    if (!exchangeSubmittedRef.current) return;
+    exchangeSubmittedRef.current = false;
+    releaseFlowLock();
+    window.location.assign(`/${locale}`);
   }
 
   const needsAccount = session !== null && !session.authenticated;
@@ -277,7 +286,18 @@ export function ExtensionLoginClient({
         )}
       </div>
 
-      <form ref={formRef} action={extensionLoginAction} className="hidden">
+      <iframe
+        name="extension-login-target"
+        title="Extension login completion"
+        className="hidden"
+        onLoad={handleExchangeFrameLoad}
+      />
+      <form
+        ref={formRef}
+        action={extensionLoginAction}
+        target="extension-login-target"
+        className="hidden"
+      >
         <input type="hidden" name="locale" value={locale} />
         <input ref={ticketRef} type="hidden" name="ticket" />
       </form>
