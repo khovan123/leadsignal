@@ -1,4 +1,6 @@
-importScripts('crypto.js', 'api.js');
+if (typeof lsGetConfig === 'undefined' || typeof lsEnsureKeyPair === 'undefined') {
+  importScripts('crypto.js', 'api.js');
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   lsEnsureKeyPair().catch(() => undefined);
