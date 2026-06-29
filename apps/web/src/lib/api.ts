@@ -1,12 +1,13 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 
-const apiUrl = process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const apiUrl =
+  process.env.INTERNAL_API_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  'http://localhost:4000';
 
-export async function getWorkspaceId(): Promise<string> {
-  const value = (await cookies()).get('ls_workspace')?.value;
-  if (!value) throw new Error('No active workspace is stored in the session');
-  return value;
+export async function getWorkspaceId(): Promise<string | null> {
+  return (await cookies()).get('ls_workspace')?.value ?? null;
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
