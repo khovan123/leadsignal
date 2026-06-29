@@ -31,6 +31,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Capture rendered Reddit posts to LeadSignal"
+    "default_title": "Open LeadSignal",
+    "default_popup": "popup.html"
   }
 }

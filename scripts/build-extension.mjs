@@ -20,6 +20,9 @@ const files = [
   'options.css',
   'options.html',
   'options.js',
+  'popup.css',
+  'popup.html',
+  'popup.js',
 ];
 
 if (browser === 'firefox') {

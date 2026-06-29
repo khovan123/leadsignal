@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeadSignal</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <div class="header">
+        <div>
+          <h1>LeadSignal</h1>
+          <p id="status">Checking extension status…</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row"><span>Paired</span><strong id="paired">—</strong></div>
+        <div class="row"><span>Workspace</span><strong id="workspace">—</strong></div>
+      </div>
+
+      <button id="capture" class="primary">Capture current Reddit page</button>
+      <button id="options" class="secondary">Open settings</button>
+      <p id="message" class="message" aria-live="polite"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
