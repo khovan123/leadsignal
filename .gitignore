@@ -8,3 +8,5 @@ coverage
 *.log
 .DS_Store
 prisma/dev.db
+.contextos/
+**/next-env.d.ts
