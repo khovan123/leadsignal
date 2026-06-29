@@ -5,7 +5,6 @@ import {
   Headers,
   Inject,
   Ip,
-  NotFoundException,
   Post,
   Req,
 } from '@nestjs/common';
@@ -40,7 +39,6 @@ export class SessionController {
     @Headers('user-agent') userAgent?: string,
     @Ip() ip?: string,
   ) {
-    this.requirePasswordAuth();
     return this.commands.execute(new LoginUserCommand(body, { userAgent, ip }));
   }
 
@@ -60,11 +58,5 @@ export class SessionController {
     return this.commands.execute(
       new LogoutUserCommand(request.user.sub, request.user.sid),
     );
-  }
-
-  private requirePasswordAuth() {
-    if (process.env.PASSWORD_AUTH_ENABLED !== 'true') {
-      throw new NotFoundException('Use the LeadSignal extension to sign in');
-    }
   }
 }

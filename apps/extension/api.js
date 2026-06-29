@@ -8,15 +8,32 @@ async function lsGetConfig() {
   return { ...LS_DEFAULT_CONFIG, ...(stored[LS_KEYS.config] || {}) };
 }
 
-async function lsSaveConfig(payload) {
-  const config = {
+function lsNormalizeConfig(payload) {
+  return {
     apiBase: lsNormalizeUrl(payload.apiBase || LS_DEFAULT_CONFIG.apiBase, true),
     appOrigin: lsNormalizeUrl(payload.appOrigin || LS_DEFAULT_CONFIG.appOrigin, false),
   };
-  await lsEnsureHostPermissions(config);
+}
+
+async function lsSaveConfig(payload) {
+  const config = lsNormalizeConfig(payload);
   await chrome.storage.local.set({ [LS_KEYS.config]: config });
   await lsRegisterAppOrigin(config.appOrigin);
   return config;
+}
+
+async function lsRequestHostPermissions(config) {
+  const origins = [...new Set([
+    lsOptionalOriginPattern(config.apiBase),
+    lsOptionalOriginPattern(config.appOrigin),
+  ].filter(Boolean))];
+
+  if (origins.length === 0) return true;
+  const accepted = await chrome.permissions.request({ origins });
+  if (!accepted) {
+    throw new Error('Host permission is required for the LeadSignal API and app.');
+  }
+  return true;
 }
 
 async function lsApiFetch(config, path, init = {}) {
@@ -47,21 +64,10 @@ async function lsApiFetch(config, path, init = {}) {
   }
 }
 
-async function lsEnsureHostPermissions(config) {
-  const origins = [...new Set([
-    lsOriginPattern(config.apiBase),
-    lsOriginPattern(config.appOrigin),
-  ])];
-  const granted = await chrome.permissions.contains({ origins });
-  if (granted) return;
-  const accepted = await chrome.permissions.request({ origins });
-  if (!accepted) throw new Error('Host permission is required for the LeadSignal API and app.');
-}
-
 async function lsRegisterAppOrigin(value) {
   if (!value) return;
   const url = new URL(value);
-  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
+  if (lsIsLocalHost(url.hostname)) return;
   const pattern = lsOriginPattern(value);
   await chrome.scripting.unregisterContentScripts({ ids: ['leadsignal-app'] }).catch(() => undefined);
   await chrome.scripting.registerContentScripts([
@@ -75,9 +81,19 @@ async function lsRegisterAppOrigin(value) {
   ]);
 }
 
+function lsOptionalOriginPattern(value) {
+  const url = new URL(String(value));
+  if (lsIsLocalHost(url.hostname)) return null;
+  return lsOriginPattern(value);
+}
+
 function lsOriginPattern(value) {
   const url = new URL(String(value));
-  return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}/*`;
+  return `${url.protocol}//${url.hostname}/*`;
+}
+
+function lsIsLocalHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
 function lsNormalizeUrl(value, keepPath) {

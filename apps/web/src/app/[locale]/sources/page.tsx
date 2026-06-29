@@ -43,7 +43,6 @@ const BUILT_INS = [
   { type: 'POPULAR', label: 'Popular', description: 'Bài phổ biến toàn Reddit', mode: 'PUBLIC' },
   { type: 'NEWS', label: 'News', description: 'Nguồn Reddit News', mode: 'PUBLIC' },
   { type: 'BEST', label: 'Best', description: 'Bài được Reddit xếp hạng tốt nhất', mode: 'PUBLIC' },
-  { type: 'LATEST', label: 'Latest', description: 'Các bài mới nhất', mode: 'PUBLIC' },
   { type: 'FOLLOWING', label: 'Following', description: 'Feed cá nhân, chạy qua extension', mode: 'EXTENSION' },
 ] as const;
 
@@ -132,7 +131,7 @@ export default async function SourcesPage({
                 <input type="hidden" name="targetPostCount" value="50" />
                 <input type="hidden" name="maxScrolls" value="20" />
                 <input type="hidden" name="maxStallRounds" value="4" />
-                <input type="hidden" name="sort" value={item.type === 'LATEST' ? 'NEW' : 'HOT'} />
+                <input type="hidden" name="sort" value="HOT" />
                 <input type="hidden" name="timeRange" value="ALL" />
                 <input type="hidden" name="collectionMode" value={item.mode} />
                 <h3 className="font-semibold">{item.label}</h3>
@@ -260,7 +259,7 @@ function SourceCard({ source, locale }: { source: Source; locale: string }) {
           </label>
           <label className="text-sm">Loại
             <select name="type" defaultValue={source.type} className="field">
-              {['HOME','POPULAR','NEWS','BEST','FOLLOWING','LATEST','SUBREDDIT','SEARCH','CUSTOM_URL'].map((type) => <option key={type}>{type}</option>)}
+              {['HOME','POPULAR','NEWS','BEST','FOLLOWING','SUBREDDIT','SEARCH','CUSTOM_URL'].map((type) => <option key={type}>{type}</option>)}
             </select>
           </label>
           <label className="text-sm">Subreddit

@@ -4,7 +4,7 @@ LeadSignal supports workspace-scoped Reddit sources from the web dashboard at `/
 
 Supported source types:
 
-- `HOME`, `POPULAR`, `NEWS`, `BEST`, `LATEST`
+- `HOME`, `POPULAR`, `NEWS`, `BEST`
 - `FOLLOWING` (browser extension only)
 - `SUBREDDIT`
 - `SEARCH`

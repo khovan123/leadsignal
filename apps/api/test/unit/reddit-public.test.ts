@@ -48,14 +48,10 @@ test('supports old Reddit fallback and top time ranges', () => {
   assert.equal(url.searchParams.get('t'), 'week');
 });
 
-test('resolves built-in home and latest feeds', () => {
+test('resolves built-in home feed', () => {
   assert.equal(
     resolvePublicRedditSourceUrl(source({ type: 'HOME' })),
     'https://www.reddit.com/',
-  );
-  assert.equal(
-    resolvePublicRedditSourceUrl(source({ type: 'LATEST' })),
-    'https://www.reddit.com/new/',
   );
 });
 

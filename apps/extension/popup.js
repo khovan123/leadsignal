@@ -26,6 +26,7 @@ async function loadState() {
       ? `Ready · v${state.version || chrome.runtime.getManifest().version}`
       : 'Pair the extension before capturing';
     captureButton.disabled = !state.paired;
+    if (state.paired) setMessage('Extension paired successfully.', 'success');
   } catch (error) {
     statusEl.textContent = 'Unable to read extension state';
     captureButton.disabled = true;
@@ -42,10 +43,22 @@ captureButton.addEventListener('click', async () => {
   } catch (error) {
     setMessage(error.message || String(error), 'error');
   } finally {
-    captureButton.disabled = false;
+    await loadState();
   }
 });
 
 optionsButton.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
-loadState();
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+  if (changes[LS_KEYS.deviceId] || changes[LS_KEYS.workspaceId]) {
+    void loadState();
+  }
+});
+
+window.addEventListener('focus', () => void loadState());
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) void loadState();
+});
+
+void loadState();

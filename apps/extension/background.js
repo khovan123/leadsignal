@@ -106,7 +106,6 @@ function detectSourceContext(value) {
   if (/^\/r\/popular(?:\/|$)/i.test(path)) return { type: 'POPULAR', url: url.href };
   if (/^\/news(?:\/|$)/i.test(path)) return { type: 'NEWS', url: url.href };
   if (/^\/(?:best|posts)(?:\/|$)/i.test(path)) return { type: 'BEST', url: url.href };
-  if (/^\/new(?:\/|$)/i.test(path)) return { type: 'LATEST', url: url.href };
   if (/^\/search(?:\/|$)/i.test(path)) return { type: 'SEARCH', searchQuery: url.searchParams.get('q') || undefined, url: url.href };
   const subreddit = path.match(/^\/r\/([^/]+)/i)?.[1];
   if (subreddit) return { type: 'SUBREDDIT', subreddit, url: url.href };

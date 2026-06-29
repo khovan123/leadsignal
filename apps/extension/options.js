@@ -6,31 +6,31 @@ const status = document.getElementById('status');
 
 void loadSettings();
 
-form.addEventListener('submit', async (event) => {
+form.addEventListener('submit', (event) => {
   event.preventDefault();
-  setStatus('Saving…', 'working');
-  try {
-    const config = await lsSaveConfig({
-      apiBase: apiBaseInput.value,
-      appOrigin: appOriginInput.value,
-    });
-    render(config);
-    setStatus('Settings saved. Reload the LeadSignal login page.', 'success');
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : String(error), 'error');
-  }
+  const config = lsNormalizeConfig({
+    apiBase: apiBaseInput.value,
+    appOrigin: appOriginInput.value,
+  });
+  void saveFromUserGesture(config, 'Settings saved. Reload the LeadSignal login page.');
 });
 
-resetButton.addEventListener('click', async () => {
-  setStatus('Restoring local defaults…', 'working');
+resetButton.addEventListener('click', () => {
+  const config = lsNormalizeConfig(LS_DEFAULT_CONFIG);
+  void saveFromUserGesture(config, 'Local defaults restored. Reload the LeadSignal login page.');
+});
+
+async function saveFromUserGesture(config, successMessage) {
+  setStatus('Saving…', 'working');
   try {
-    const config = await lsSaveConfig(LS_DEFAULT_CONFIG);
-    render(config);
-    setStatus('Local defaults restored.', 'success');
+    await lsRequestHostPermissions(config);
+    const saved = await lsSaveConfig(config);
+    render(saved);
+    setStatus(successMessage, 'success');
   } catch (error) {
     setStatus(error instanceof Error ? error.message : String(error), 'error');
   }
-});
+}
 
 async function loadSettings() {
   try {
