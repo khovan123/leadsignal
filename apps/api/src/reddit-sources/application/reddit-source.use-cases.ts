@@ -13,12 +13,16 @@ import {
 } from '../domain/reddit-source.repository';
 
 export class ListRedditSourcesQuery {
-  constructor(readonly workspaceId: string) {}
+  constructor(
+    readonly workspaceId: string,
+    readonly userId: string,
+  ) {}
 }
 
 export class GetRedditCollectionJobQuery {
   constructor(
     readonly workspaceId: string,
+    readonly userId: string,
     readonly jobId: string,
   ) {}
 }
@@ -65,8 +69,9 @@ export class ListRedditSourcesHandler
     private readonly repository: IRedditSourceRepository,
   ) {}
 
-  execute(query: ListRedditSourcesQuery) {
-    return this.repository.list(query.workspaceId);
+  async execute(query: ListRedditSourcesQuery) {
+    await this.repository.assertWorkspaceMember(query.workspaceId, query.userId);
+    return this.repository.list(query.workspaceId, query.userId);
   }
 }
 
@@ -78,7 +83,11 @@ export class GetRedditCollectionJobHandler
 
   async execute(query: GetRedditCollectionJobQuery) {
     const job = await this.queue.getRedditCollectionJob(query.jobId);
-    if (!job || job.workspaceId !== query.workspaceId) {
+    if (
+      !job ||
+      job.workspaceId !== query.workspaceId ||
+      job.userId !== query.userId
+    ) {
       throw new NotFoundException('Reddit collection job not found');
     }
     return job;
@@ -95,8 +104,12 @@ export class CreateRedditSourceHandler
   ) {}
 
   async execute(command: CreateRedditSourceCommand) {
-    await this.repository.assertCanManage(command.workspaceId, command.userId);
-    return this.repository.create(command.workspaceId, command.input);
+    await this.repository.assertWorkspaceMember(command.workspaceId, command.userId);
+    return this.repository.create(
+      command.workspaceId,
+      command.userId,
+      command.input,
+    );
   }
 }
 
@@ -110,9 +123,10 @@ export class UpdateRedditSourceHandler
   ) {}
 
   async execute(command: UpdateRedditSourceCommand) {
-    await this.repository.assertCanManage(command.workspaceId, command.userId);
+    await this.repository.assertWorkspaceMember(command.workspaceId, command.userId);
     return this.repository.update(
       command.workspaceId,
+      command.userId,
       command.sourceId,
       command.input,
     );
@@ -129,8 +143,12 @@ export class DeleteRedditSourceHandler
   ) {}
 
   async execute(command: DeleteRedditSourceCommand) {
-    await this.repository.assertCanManage(command.workspaceId, command.userId);
-    await this.repository.remove(command.workspaceId, command.sourceId);
+    await this.repository.assertWorkspaceMember(command.workspaceId, command.userId);
+    await this.repository.remove(
+      command.workspaceId,
+      command.userId,
+      command.sourceId,
+    );
     return { success: true };
   }
 }
@@ -146,18 +164,24 @@ export class RunRedditSourcesHandler
   ) {}
 
   async execute(command: RunRedditSourcesCommand) {
-    await this.repository.assertCanManage(command.workspaceId, command.userId);
+    await this.repository.assertWorkspaceMember(command.workspaceId, command.userId);
+    const sources = await this.repository.list(
+      command.workspaceId,
+      command.userId,
+    );
+
     if (command.sourceIds?.length) {
-      const sources = await this.repository.list(command.workspaceId);
       const allowed = new Set(sources.map((source) => source.id));
       if (command.sourceIds.some((sourceId) => !allowed.has(sourceId))) {
         throw new BadRequestException(
-          'One or more Reddit sources do not belong to the workspace',
+          'One or more Reddit sources do not belong to the current member',
         );
       }
     }
+
     const job = await this.queue.enqueueRedditCollection(
       command.workspaceId,
+      command.userId,
       command.sourceIds,
     );
     return { jobId: String(job.id), status: 'QUEUED' };
