@@ -43,6 +43,7 @@ function setSession(
 ) {
   const secure = process.env.NODE_ENV === 'production';
   const refreshAge = Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86400;
+
   response.cookies.set('ls_access', session.accessToken, {
     httpOnly: true,
     sameSite: 'lax',
@@ -70,23 +71,9 @@ function setSession(
 
 export default async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  const extensionLoginComplete =
-    request.cookies.get('ls_extension_login_complete')?.value === '1';
-  const access = request.cookies.get('ls_access')?.value;
-
-  if (
-    extensionLoginComplete &&
-    /^\/(vi|en)\/login(?:\/|$)/.test(pathname) &&
-    !expiresSoon(access)
-  ) {
-    const response = NextResponse.redirect(
-      new URL(`/${localeOf(pathname)}`, request.url),
-    );
-    response.cookies.delete('ls_extension_login_complete');
-    return response;
-  }
-
   if (isPublic(pathname)) return intl(request);
+
+  const access = request.cookies.get('ls_access')?.value;
   if (!expiresSoon(access)) return intl(request);
 
   const refresh = request.cookies.get('ls_refresh')?.value;
@@ -111,6 +98,7 @@ export default async function proxy(request: NextRequest) {
       expiresIn: number;
       user: { workspaceId?: string };
     };
+
     request.cookies.set('ls_access', session.accessToken);
     request.cookies.set('ls_refresh', session.refreshToken);
     if (session.user.workspaceId) {
@@ -127,7 +115,6 @@ export default async function proxy(request: NextRequest) {
     response.cookies.delete('ls_access');
     response.cookies.delete('ls_refresh');
     response.cookies.delete('ls_workspace');
-    response.cookies.delete('ls_extension_login_complete');
     return response;
   }
 }
