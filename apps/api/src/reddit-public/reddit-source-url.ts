@@ -41,7 +41,6 @@ export function resolvePublicRedditSourceUrl(
   if (type === 'POPULAR') return `https://${host}/r/popular/`;
   if (type === 'NEWS') return `https://${host}/news/`;
   if (type === 'BEST') return `https://${host}/best/`;
-  if (type === 'LATEST') return `https://${host}/new/`;
 
   if (query?.startsWith('http://') || query?.startsWith('https://')) {
     const url = new URL(query);
