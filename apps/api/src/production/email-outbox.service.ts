@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { PrismaService } from '../database/prisma.service';
 
 interface EmailOutboxRow {
@@ -10,12 +11,55 @@ interface EmailOutboxRow {
   maxAttempts: number;
 }
 
+export interface SmtpConfiguration {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+  from: string;
+}
+
 export function emailRetryDelaySeconds(attempt: number): number {
   return Math.min(3600, 15 * 2 ** Math.max(0, attempt - 1));
 }
 
+export function readSmtpConfiguration(
+  environment: NodeJS.ProcessEnv = process.env,
+): SmtpConfiguration | undefined {
+  const user = environment.SMTP_USER?.trim();
+  const password = environment.SMTP_PASSWORD?.replace(/\s+/g, '');
+
+  if (!user && !password) return undefined;
+  if (!user || !password) {
+    throw new Error('SMTP_USER and SMTP_PASSWORD must be configured together');
+  }
+
+  const port = Number(environment.SMTP_PORT ?? 465);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('SMTP_PORT must be a valid TCP port');
+  }
+
+  const secureValue = environment.SMTP_SECURE?.trim().toLowerCase();
+  const secure = secureValue === undefined ? port === 465 : secureValue === 'true';
+  if (secureValue !== undefined && !['true', 'false'].includes(secureValue)) {
+    throw new Error('SMTP_SECURE must be true or false');
+  }
+
+  return {
+    host: environment.SMTP_HOST?.trim() || 'smtp.gmail.com',
+    port,
+    secure,
+    user,
+    password,
+    from: environment.INVITATION_FROM_EMAIL?.trim() || `LeadSignal <${user}>`,
+  };
+}
+
 @Injectable()
 export class EmailOutboxService {
+  private transporter?: Transporter;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async processBatch(workerId: string, batchSize = 20) {
@@ -68,24 +112,35 @@ export class EmailOutboxService {
   }
 
   private async deliver(row: EmailOutboxRow): Promise<void> {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
+    const smtp = readSmtpConfiguration();
+    if (!smtp) {
       if (process.env.NODE_ENV === 'production') {
-        throw new Error('RESEND_API_KEY is required in production');
+        throw new Error('SMTP_USER and SMTP_PASSWORD are required in production');
       }
-      console.log('Email outbox delivery', { to: row.recipient, subject: row.subjectLine });
+      console.log('Email outbox delivery', {
+        to: row.recipient,
+        subject: row.subjectLine,
+      });
       return;
     }
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        from: process.env.INVITATION_FROM_EMAIL ?? 'LeadSignal <noreply@example.com>',
-        to: [row.recipient],
-        subject: row.subjectLine,
-        html: row.bodyHtml,
-      }),
+
+    if (!this.transporter) {
+      this.transporter = nodemailer.createTransport({
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.secure,
+        auth: {
+          user: smtp.user,
+          pass: smtp.password,
+        },
+      });
+    }
+
+    await this.transporter.sendMail({
+      from: smtp.from,
+      to: row.recipient,
+      subject: row.subjectLine,
+      html: row.bodyHtml,
     });
-    if (!response.ok) throw new Error(`Email provider returned ${response.status}`);
   }
 }
