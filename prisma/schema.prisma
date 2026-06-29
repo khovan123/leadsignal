@@ -239,14 +239,15 @@ model PostDiscovery {
   id           String   @id @default(uuid())
   workspaceId  String
   postId       String
-  sourceId     String?
+  sourceId     String
   discoveredAt DateTime @default(now())
 
-  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  post      RedditPost    @relation(fields: [postId], references: [id], onDelete: Cascade)
-  source    RedditSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  post      RedditPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  source    RedditSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, postId])
+  @@unique([workspaceId, postId, sourceId])
   @@index([workspaceId, discoveredAt])
 }
 
