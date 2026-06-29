@@ -15,6 +15,7 @@ import {
   REDDIT_SOURCE_REPOSITORY,
   type IRedditSourceRepository,
   type RedditSourceConfiguration,
+  type SaveRedditSourceInput,
 } from '../domain/reddit-source.repository';
 
 export interface ExtensionSourceContext {
@@ -82,13 +83,19 @@ export class ExtensionSourceConfigService {
       device.workspaceId,
       device.userId,
     );
-    const source = this.matchSource(sources, input.context);
+    const existing = this.matchSource(sources, input.context);
+    const source =
+      existing ??
+      (await this.repository.create(
+        device.workspaceId,
+        device.userId,
+        this.defaultInput(input.context),
+      ));
+
     return {
       workspaceId: device.workspaceId,
-      sourceId: source?.id,
-      source: source
-        ? this.toSettings(source)
-        : this.defaults(input.context),
+      sourceId: source.id,
+      source: this.toSettings(source),
     };
   }
 
@@ -134,15 +141,16 @@ export class ExtensionSourceConfigService {
     };
   }
 
-  private defaults(context: ExtensionSourceContext) {
+  private defaultInput(context: ExtensionSourceContext): SaveRedditSourceInput {
+    const type = context.type.trim().toUpperCase();
     return {
-      id: undefined,
-      type: context.type.trim().toUpperCase(),
+      type,
       name: context.subreddit
         ? `r/${context.subreddit}`
         : `${context.type} browser feed`,
       subreddit: context.subreddit,
-      searchQuery: context.searchQuery,
+      searchQuery:
+        type === 'CUSTOM_URL' ? context.url : context.searchQuery,
       targetPostCount: 50,
       maxScrolls: 20,
       maxStallRounds: 4,
@@ -151,6 +159,8 @@ export class ExtensionSourceConfigService {
       includeNsfw: false,
       detailEnabled: true,
       commentsTopN: 0,
+      collectionMode: 'EXTENSION',
+      enabled: true,
     };
   }
 }
