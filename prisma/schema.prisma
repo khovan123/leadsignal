@@ -78,10 +78,11 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  memberships                 WorkspaceMember[]
-  llmConnections              LlmConnection[]
-  extensionDevices            ExtensionDevice[]
+  memberships                  WorkspaceMember[]
+  llmConnections               LlmConnection[]
+  extensionDevices             ExtensionDevice[]
   extensionPairingCodesCreated ExtensionPairingCode[] @relation("ExtensionPairingInviter")
+  redditSources                RedditSource[]          @relation("RedditSourceOwner")
 }
 
 model Workspace {
@@ -199,6 +200,7 @@ model ExtensionReplayNonce {
 model RedditSource {
   id          String   @id @default(uuid())
   workspaceId String
+  ownerUserId String
   name        String
   type        String
   subreddit   String?
@@ -208,7 +210,10 @@ model RedditSource {
   updatedAt   DateTime @updatedAt
 
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User            @relation("RedditSourceOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   discoveries PostDiscovery[]
+
+  @@index([workspaceId, ownerUserId, createdAt])
 }
 
 model RedditPost {
