@@ -37,9 +37,12 @@ export class GeminiStrategy implements LlmStrategy {
     request: StrategyRequest,
   ): Promise<StrategyResult> {
     const started = Date.now();
-    const oauth = Boolean(connection.baseUrl?.includes('aiplatform.googleapis.com'));
+    const oauth =
+      connection.baseUrl === 'vertex-oauth://google' ||
+      Boolean(connection.baseUrl?.includes('aiplatform.googleapis.com'));
+    const baseUrl = oauth ? resolveVertexBaseUrl(connection.baseUrl) : undefined;
     const url = oauth
-      ? `${connection.baseUrl!.replace(/\/$/, '')}/${encodeURIComponent(request.model)}:generateContent`
+      ? `${baseUrl}/${encodeURIComponent(request.model)}:generateContent`
       : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(request.model)}:generateContent?key=${encodeURIComponent(connection.credential ?? '')}`;
 
     const response = await fetchWithTimeout(
@@ -88,4 +91,16 @@ export class GeminiStrategy implements LlmStrategy {
       latencyMs: Date.now() - started,
     };
   }
+}
+
+function resolveVertexBaseUrl(configured?: string) {
+  if (configured && configured !== 'vertex-oauth://google') {
+    return configured.replace(/\/$/, '');
+  }
+  const project = process.env.GOOGLE_VERTEX_PROJECT_ID;
+  if (!project) {
+    throw new Error('GOOGLE_VERTEX_PROJECT_ID is required for Google OAuth');
+  }
+  const location = process.env.GOOGLE_VERTEX_LOCATION ?? 'us-central1';
+  return `https://${location}-aiplatform.googleapis.com/v1/projects/${encodeURIComponent(project)}/locations/${encodeURIComponent(location)}/publishers/google/models`;
 }
