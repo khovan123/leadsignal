@@ -104,12 +104,17 @@ async function bootstrap() {
   const redditWorker = new Worker(
     'reddit-collection',
     async (job) => {
-      const { workspaceId, sourceIds } = job.data as {
+      const { workspaceId, userId, sourceIds } = job.data as {
         workspaceId: string;
+        userId: string;
         sourceIds?: string[];
       };
       await job.updateProgress({ status: 'RUNNING' });
-      const result = await redditCollector.collect({ workspaceId, sourceIds });
+      const result = await redditCollector.collect({
+        workspaceId,
+        userId,
+        sourceIds,
+      });
       await job.updateProgress({
         status: 'COMPLETED',
         sources: result.sourceResults,
