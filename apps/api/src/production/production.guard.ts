@@ -14,7 +14,7 @@ const PUBLIC_EXTENSION_ROUTES = new Set([
   'POST /api/auth/extension/verify',
   'POST /api/auth/extension/exchange',
   'POST /api/extension/ingest',
-  'GET /api/extension/source-settings',
+  'POST /api/extension/source-settings',
 ]);
 
 export function isPublicProductionRoute(method: string, path: string): boolean {
