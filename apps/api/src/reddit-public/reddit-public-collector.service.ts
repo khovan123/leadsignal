@@ -1,5 +1,5 @@
 import { Logger } from "@nestjs/common";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { chromium } from "playwright";
 import { PrismaService } from "../database/prisma.service";
 import { QueueService } from "../queue/queue.service";
@@ -15,6 +15,10 @@ import type {
   RedditPublicSource,
 } from "./reddit-public.types";
 import { resolvePublicRedditSourceUrl } from "./reddit-source-url";
+import {
+  assertRedditSession,
+  launchRedditBackendContext,
+} from './reddit-browser-profile';
 
 export interface RedditCollectionFilter {
   workspaceId?: string;
@@ -89,7 +93,6 @@ export class RedditPublicCollectorService {
       };
     }
 
-    let browser: Browser | null = null;
     let context: BrowserContext | null = null;
     let posts = 0;
     const failures: Array<{ sourceId: string; message: string }> = [];
@@ -125,15 +128,15 @@ export class RedditPublicCollectorService {
     }
 
     try {
-      browser = await this.launchBrowser();
-      context = await browser.newContext({
-        userAgent:
-          process.env.REDDIT_CRAWLER_USER_AGENT ??
-          "LeadSignalPublicCollector/1.0",
-        locale: process.env.REDDIT_CRAWLER_LOCALE ?? "en-US",
-        timezoneId: process.env.REDDIT_CRAWLER_TIMEZONE ?? "Asia/Ho_Chi_Minh",
-        viewport: { width: 1440, height: 1000 },
-      });
+      context = await launchRedditBackendContext();
+      if (
+        enabled(
+          process.env.REDDIT_REQUIRE_AUTHENTICATED_PROFILE,
+          false,
+        )
+      ) {
+        await assertRedditSession(context);
+      }
 
       for (const source of publicSources) {
         await this.updateStatus(source.id, "RUNNING", 0, null);
@@ -176,7 +179,6 @@ export class RedditPublicCollectorService {
       }
     } finally {
       await context?.close().catch(() => undefined);
-      await browser?.close().catch(() => undefined);
     }
 
     return {
@@ -257,19 +259,19 @@ export class RedditPublicCollectorService {
     `;
   }
 
-  private async launchBrowser(): Promise<Browser> {
-    const showBrowser = enabled(process.env.REDDIT_SHOW_BROWSER, false);
-    const channel = process.env.REDDIT_BROWSER_CHANNEL?.trim() || undefined;
-    try {
-      return await chromium.launch({ headless: !showBrowser, channel });
-    } catch (error) {
-      if (!channel) throw error;
-      this.logger.warn(
-        `Browser channel ${channel} is unavailable; using Playwright Chromium`,
-      );
-      return chromium.launch({ headless: !showBrowser });
-    }
-  }
+  // private async launchBrowser(): Promise<Browser> {
+  //   const showBrowser = enabled(process.env.REDDIT_SHOW_BROWSER, false);
+  //   const channel = process.env.REDDIT_BROWSER_CHANNEL?.trim() || undefined;
+  //   try {
+  //     return await chromium.launch({ headless: !showBrowser, channel });
+  //   } catch (error) {
+  //     if (!channel) throw error;
+  //     this.logger.warn(
+  //       `Browser channel ${channel} is unavailable; using Playwright Chromium`,
+  //     );
+  //     return chromium.launch({ headless: !showBrowser });
+  //   }
+  // }
 
   private async collectSource(
     context: BrowserContext,

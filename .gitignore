@@ -10,3 +10,5 @@ coverage
 prisma/dev.db
 .contextos/
 **/next-env.d.ts
+.runtime/
+reddit-browser-profile/
