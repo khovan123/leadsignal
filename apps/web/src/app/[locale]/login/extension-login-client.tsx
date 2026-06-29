@@ -2,12 +2,16 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { extensionLoginAction } from '../auth-actions';
+import {
+  createExtensionPairingCodeAction,
+  extensionLoginAction,
+} from '../auth-actions';
 
 type ExtensionState = {
   installed: boolean;
   paired: boolean;
   deviceId?: string;
+  workspaceId?: string;
   version?: string;
 };
 
@@ -19,6 +23,7 @@ type ExtensionMessage = {
   ticket?: string;
   state?: ExtensionState;
   deviceId?: string;
+  workspaceId?: string;
 };
 
 export function ExtensionLoginClient({
@@ -32,36 +37,93 @@ export function ExtensionLoginClient({
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError ? decodeURIComponent(initialError) : '');
-  const [pairingCode, setPairingCode] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const ticketRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const autoStartedRef = useRef(false);
+
+  function requestAuthentication() {
+    setBusy(true);
+    setError('');
+    window.postMessage(
+      { type: 'LEADSIGNAL_EXTENSION_AUTH', requestId: crypto.randomUUID() },
+      window.location.origin,
+    );
+  }
+
+  async function pairFromCurrentSession() {
+    setBusy(true);
+    setError('');
+    const result = await createExtensionPairingCodeAction();
+    if (!result.ok || !result.pairingCode) {
+      setBusy(false);
+      setError(
+        result.error ??
+          'Không thể tạo pairing code từ phiên đăng nhập hiện tại. Hãy đăng nhập bằng email trước.',
+      );
+      return;
+    }
+
+    window.postMessage(
+      {
+        type: 'LEADSIGNAL_EXTENSION_PAIR',
+        requestId: crypto.randomUUID(),
+        payload: {
+          pairingCode: result.pairingCode,
+          deviceLabel: `${navigator.platform || 'Browser'} LeadSignal Extension`,
+        },
+      },
+      window.location.origin,
+    );
+  }
+
+  function startAutomaticFlow(current: ExtensionState) {
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    if (current.paired) requestAuthentication();
+    else void pairFromCurrentSession();
+  }
 
   useEffect(() => {
     let detected = false;
     const onMessage = (event: MessageEvent<ExtensionMessage>) => {
-      if (event.source !== window || !event.data?.type) return;
+      if (event.source !== window || event.origin !== window.location.origin || !event.data?.type) return;
       const message = event.data;
+
       if (message.type === 'LEADSIGNAL_EXTENSION_PONG') {
         detected = true;
         setChecking(false);
-        setState({ installed: true, paired: Boolean(message.state?.paired), ...message.state });
+        const nextState = {
+          installed: true,
+          paired: Boolean(message.state?.paired),
+          ...message.state,
+        } as ExtensionState;
+        setState(nextState);
+        startAutomaticFlow(nextState);
         return;
       }
+
       if (message.type === 'LEADSIGNAL_EXTENSION_PAIR_RESULT') {
-        setBusy(false);
         if (!message.ok) {
+          autoStartedRef.current = false;
+          setBusy(false);
           setError(message.error ?? 'Không thể ghép nối extension.');
           return;
         }
-        setError('');
-        setState((current) => ({ ...current, installed: true, paired: true, deviceId: message.deviceId }));
+        setState((current) => ({
+          ...current,
+          installed: true,
+          paired: true,
+          deviceId: message.deviceId,
+          workspaceId: message.workspaceId,
+        }));
         requestAuthentication();
         return;
       }
+
       if (message.type === 'LEADSIGNAL_EXTENSION_AUTH_RESULT') {
         setBusy(false);
         if (!message.ok || !message.ticket) {
+          autoStartedRef.current = false;
           setError(message.error ?? 'Extension không thể xác thực thiết bị.');
           return;
         }
@@ -75,12 +137,13 @@ export function ExtensionLoginClient({
       { type: 'LEADSIGNAL_EXTENSION_PING', requestId: crypto.randomUUID() },
       window.location.origin,
     );
+
     const timeout = window.setTimeout(() => {
       if (!detected) {
         setChecking(false);
         setState({ installed: false, paired: false });
       }
-    }, 1600);
+    }, 2000);
 
     return () => {
       window.clearTimeout(timeout);
@@ -88,34 +151,10 @@ export function ExtensionLoginClient({
     };
   }, []);
 
-  function requestAuthentication() {
-    setBusy(true);
-    setError('');
-    window.postMessage(
-      { type: 'LEADSIGNAL_EXTENSION_AUTH', requestId: crypto.randomUUID() },
-      window.location.origin,
-    );
-  }
-
-  function pairDevice() {
-    if (!pairingCode.trim()) {
-      setError('Nhập pairing code do owner/admin cấp.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    window.postMessage(
-      {
-        type: 'LEADSIGNAL_EXTENSION_PAIR',
-        requestId: crypto.randomUUID(),
-        payload: {
-          pairingCode: pairingCode.trim(),
-          displayName: displayName.trim() || undefined,
-          deviceLabel: `${navigator.platform || 'Browser'} LeadSignal Extension`,
-        },
-      },
-      window.location.origin,
-    );
+  function retry() {
+    autoStartedRef.current = false;
+    if (state.paired) requestAuthentication();
+    else void pairFromCurrentSession();
   }
 
   return (
@@ -123,7 +162,7 @@ export function ExtensionLoginClient({
       <div>
         <h1 className="text-3xl font-semibold">Đăng nhập bằng LeadSignal Extension</h1>
         <p className="mt-2 text-slate-400">
-          Không cần email hoặc mật khẩu. Extension ký một challenge bằng khóa riêng của thiết bị.
+          LeadSignal sử dụng phiên đăng nhập hiện tại để tự ghép nối extension, sau đó xác thực thiết bị bằng chữ ký số.
         </p>
       </div>
 
@@ -141,57 +180,30 @@ export function ExtensionLoginClient({
             <div className="rounded-lg border border-amber-700 bg-amber-950/30 p-4">
               <p className="font-medium text-amber-200">Chưa phát hiện LeadSignal Extension</p>
               <p className="mt-2 text-sm text-amber-100/80">
-                Cài extension, reload trang này, rồi ghép nối thiết bị bằng pairing code.
+                Cài hoặc reload extension, sau đó reload lại trang này.
               </p>
             </div>
             <Link
               href={`/${locale}/extension`}
               className="block w-full rounded-lg bg-violet-600 px-4 py-2 text-center font-medium"
             >
-              Xem hướng dẫn cài extension
+              Mở hướng dẫn extension
             </Link>
           </div>
-        ) : state.paired ? (
+        ) : (
           <div className="space-y-4">
             <div className="rounded-lg border border-emerald-800 bg-emerald-950/30 p-4 text-sm text-emerald-200">
-              Extension đã được ghép nối{state.deviceId ? ` · ${state.deviceId.slice(0, 8)}` : ''}
+              {state.paired
+                ? 'Extension đã ghép nối. Đang xác thực và đăng nhập…'
+                : 'Đã phát hiện extension. Đang tự động ghép nối từ phiên đăng nhập hiện tại…'}
             </div>
             <button
               type="button"
               disabled={busy}
-              onClick={requestAuthentication}
+              onClick={retry}
               className="w-full rounded-lg bg-violet-600 px-4 py-2 font-medium disabled:opacity-50"
             >
-              {busy ? 'Đang xác thực…' : 'Đăng nhập bằng extension'}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <label className="block text-sm">
-              Tên hiển thị
-              <input
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="Ví dụ: Minh"
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              Pairing code
-              <input
-                value={pairingCode}
-                onChange={(event) => setPairingCode(event.target.value)}
-                placeholder="LS-XXXXXXXX-XXXXXX"
-                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={pairDevice}
-              className="w-full rounded-lg bg-violet-600 px-4 py-2 font-medium disabled:opacity-50"
-            >
-              {busy ? 'Đang ghép nối…' : 'Ghép nối và đăng nhập'}
+              {busy ? 'Đang xử lý…' : 'Thử lại'}
             </button>
           </div>
         )}
