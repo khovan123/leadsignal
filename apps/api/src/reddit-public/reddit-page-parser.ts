@@ -25,12 +25,11 @@ export interface RedditPageCard {
 }
 
 /**
- * Build the browser callback at runtime so tsx/esbuild cannot inject helpers
- * such as `__name` into code that Playwright serializes into the page.
+ * Pass browser-side code as a string so tsx/esbuild cannot attach helpers such
+ * as `__name` to a function that Playwright later serializes into the page.
  */
-const extractCardsInBrowser = new Function(
-  'elements',
-  String.raw`
+const EXTRACT_REDDIT_CARDS_EXPRESSION = String.raw`
+  (elements) => {
     const text = (value) => {
       const normalized = value == null
         ? undefined
@@ -78,7 +77,8 @@ const extractCardsInBrowser = new Function(
         absolute(attribute(host, ['permalink', 'data-permalink'])) ||
         absolute(attribute(container, ['data-permalink'])) ||
         absolute(link && link.getAttribute('href'));
-      const idMatch = permalink && permalink.match(/\/comments\/([a-z0-9]+)(?:\/|$)/i);
+      const idMatch =
+        permalink && permalink.match(/\/comments\/([a-z0-9]+)(?:\/|$)/i);
       const idFromUrl = idMatch ? idMatch[1] : undefined;
       const rawId =
         attribute(host, ['id', 'data-fullname', 'data-post-id']) ||
@@ -178,9 +178,11 @@ const extractCardsInBrowser = new Function(
     }
 
     return Array.from(results.values());
-  `,
-) as (elements: Element[]) => RedditPageCard[];
+  }
+`;
 
 export function extractRedditCards(page: Page): Promise<RedditPageCard[]> {
-  return page.locator(REDDIT_POST_SELECTOR).evaluateAll(extractCardsInBrowser);
+  return page
+    .locator(REDDIT_POST_SELECTOR)
+    .evaluateAll(EXTRACT_REDDIT_CARDS_EXPRESSION) as Promise<RedditPageCard[]>;
 }
