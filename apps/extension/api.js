@@ -1,6 +1,6 @@
 const LS_DEFAULT_CONFIG = {
-  apiBase: 'http://localhost:4000/api',
-  appOrigin: 'http://localhost:3000',
+  apiBase: "http://localhost:4000/api",
+  appOrigin: "http://localhost:3001",
 };
 
 async function lsGetConfig() {
@@ -11,7 +11,10 @@ async function lsGetConfig() {
 function lsNormalizeConfig(payload) {
   return {
     apiBase: lsNormalizeUrl(payload.apiBase || LS_DEFAULT_CONFIG.apiBase, true),
-    appOrigin: lsNormalizeUrl(payload.appOrigin || LS_DEFAULT_CONFIG.appOrigin, false),
+    appOrigin: lsNormalizeUrl(
+      payload.appOrigin || LS_DEFAULT_CONFIG.appOrigin,
+      false,
+    ),
   };
 }
 
@@ -23,15 +26,21 @@ async function lsSaveConfig(payload) {
 }
 
 async function lsRequestHostPermissions(config) {
-  const origins = [...new Set([
-    lsOptionalOriginPattern(config.apiBase),
-    lsOptionalOriginPattern(config.appOrigin),
-  ].filter(Boolean))];
+  const origins = [
+    ...new Set(
+      [
+        lsOptionalOriginPattern(config.apiBase),
+        lsOptionalOriginPattern(config.appOrigin),
+      ].filter(Boolean),
+    ),
+  ];
 
   if (origins.length === 0) return true;
   const accepted = await chrome.permissions.request({ origins });
   if (!accepted) {
-    throw new Error('Host permission is required for the LeadSignal API and app.');
+    throw new Error(
+      "Host permission is required for the LeadSignal API and app.",
+    );
   }
   return true;
 }
@@ -43,21 +52,28 @@ async function lsApiFetch(config, path, init = {}) {
     const response = await fetch(`${config.apiBase}${path}`, {
       ...init,
       signal: controller.signal,
-      headers: { 'content-type': 'application/json', ...(init.headers || {}) },
+      headers: { "content-type": "application/json", ...(init.headers || {}) },
     });
     const text = await response.text();
     let data = null;
     if (text) {
-      try { data = JSON.parse(text); }
-      catch { data = text; }
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
     }
     if (!response.ok) {
-      const message = data?.message || data?.error || data || `HTTP ${response.status}`;
-      throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
+      const message =
+        data?.message || data?.error || data || `HTTP ${response.status}`;
+      throw new Error(
+        typeof message === "string" ? message : JSON.stringify(message),
+      );
     }
     return data;
   } catch (error) {
-    if (error.name === 'AbortError') throw new Error('LeadSignal API timed out');
+    if (error.name === "AbortError")
+      throw new Error("LeadSignal API timed out");
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -69,13 +85,15 @@ async function lsRegisterAppOrigin(value) {
   const url = new URL(value);
   if (lsIsLocalHost(url.hostname)) return;
   const pattern = lsOriginPattern(value);
-  await chrome.scripting.unregisterContentScripts({ ids: ['leadsignal-app'] }).catch(() => undefined);
+  await chrome.scripting
+    .unregisterContentScripts({ ids: ["leadsignal-app"] })
+    .catch(() => undefined);
   await chrome.scripting.registerContentScripts([
     {
-      id: 'leadsignal-app',
+      id: "leadsignal-app",
       matches: [pattern],
-      js: ['content-leadsignal.js'],
-      runAt: 'document_start',
+      js: ["content-leadsignal.js"],
+      runAt: "document_start",
       persistAcrossSessions: true,
     },
   ]);
@@ -93,14 +111,15 @@ function lsOriginPattern(value) {
 }
 
 function lsIsLocalHost(hostname) {
-  return hostname === 'localhost' || hostname === '127.0.0.1';
+  return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
 function lsNormalizeUrl(value, keepPath) {
   const url = new URL(String(value));
-  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP(S) URLs are supported');
-  url.hash = '';
-  url.search = '';
-  if (!keepPath) url.pathname = '';
-  return url.href.replace(/\/$/, '');
+  if (!["http:", "https:"].includes(url.protocol))
+    throw new Error("Only HTTP(S) URLs are supported");
+  url.hash = "";
+  url.search = "";
+  if (!keepPath) url.pathname = "";
+  return url.href.replace(/\/$/, "");
 }
