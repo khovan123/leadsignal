@@ -5,7 +5,7 @@
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "pnpm --filter @leadsignal/contracts build && pnpm --parallel --filter @leadsignal/api --filter @leadsignal/worker --filter @leadsignal/web dev",
-    "build": "pnpm -r build",
+    "build": "pnpm db:generate && pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @leadsignal/api test:e2e",
