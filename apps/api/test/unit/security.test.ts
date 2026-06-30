@@ -34,10 +34,18 @@ test('access tokens round-trip and reject signature tampering', () => {
   assert.equal(claims.sub, 'user-1');
   assert.equal(claims.sid, 'session-1');
 
-  const replacement = token.endsWith('x') ? 'y' : 'x';
-  const changedToken = `${token.slice(0, -1)}${replacement}`;
+  const [header, payload, signature] = token.split('.');
+  assert.ok(header && payload && signature);
+
+  const replacement = signature[0] === 'A' ? 'B' : 'A';
+  const changedSignature = `${replacement}${signature.slice(1)}`;
+  const changedToken = `${header}.${payload}.${changedSignature}`;
+
   assert.notEqual(changedToken, token);
-  assert.throws(() => verifyAccessToken(changedToken));
+  assert.throws(
+    () => verifyAccessToken(changedToken),
+    /Invalid access token signature/,
+  );
 });
 
 test('PKCE challenge is the SHA-256 digest of the verifier', () => {
