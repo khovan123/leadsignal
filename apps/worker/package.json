@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "TSX_TSCONFIG_PATH=tsconfig.json tsx watch src/dev.ts",
+    "dev": "tsx watch --tsconfig tsconfig.json src/dev.ts",
     "build": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "echo worker:ok"

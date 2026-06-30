@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "dev": "pnpm --filter @leadsignal/contracts build && pnpm --parallel --filter @leadsignal/api --filter @leadsignal/worker --filter @leadsignal/web dev",
+    "dev": "node scripts/ensure-local-services.mjs && pnpm --filter @leadsignal/contracts build && pnpm db:generate && pnpm db:deploy && pnpm --parallel --filter @leadsignal/api --filter @leadsignal/worker --filter @leadsignal/web dev",
     "build": "pnpm db:generate && pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",

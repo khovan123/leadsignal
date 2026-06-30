@@ -4,12 +4,12 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
-} from '@nestjs/common';
-import { LlmProvider } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
-import { CryptoService } from '../crypto/crypto.service';
-import { PrismaService } from '../database/prisma.service';
-import { QueueService } from '../queue/queue.service';
+} from "@nestjs/common";
+import { LlmProvider } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { CryptoService } from "../crypto/crypto.service";
+import { PrismaService } from "../database/prisma.service";
+import { QueueService } from "../queue/queue.service";
 import {
   createPkce,
   hashPassword,
@@ -17,7 +17,7 @@ import {
   signAccessToken,
   tokenHash,
   verifyPassword,
-} from './security';
+} from "./security";
 
 interface UserRow {
   id: string;
@@ -84,7 +84,7 @@ export class ProductionService {
     const displayName = input.displayName?.trim();
     if (!email || !displayName || !input.password) {
       throw new BadRequestException(
-        'email, displayName and password are required',
+        "email, displayName and password are required",
       );
     }
 
@@ -93,17 +93,18 @@ export class ProductionService {
       FROM "User" WHERE email=${email} LIMIT 1
     `;
     if (existing.length) {
-      throw new BadRequestException('Email is already registered');
+      throw new BadRequestException("Email is already registered");
     }
 
     const passwordHash = await hashPassword(input.password);
     const userId = randomUUID();
     const workspaceId = randomUUID();
-    const slugBase = email
-      .split('@')[0]
-      .replace(/[^a-z0-9]+/gi, '-')
-      .replace(/^-|-$/g, '')
-      .toLowerCase() || 'workspace';
+    const slugBase =
+      email
+        .split("@")[0]
+        .replace(/[^a-z0-9]+/gi, "-")
+        .replace(/^-|-$/g, "")
+        .toLowerCase() || "workspace";
     const slug = `${slugBase}-${workspaceId.slice(0, 8)}`;
 
     await this.prisma.$transaction(async (tx) => {
@@ -135,7 +136,7 @@ export class ProductionService {
   ) {
     const email = input.email?.trim().toLowerCase();
     if (!email || !input.password) {
-      throw new BadRequestException('email and password are required');
+      throw new BadRequestException("email and password are required");
     }
     const rows = await this.prisma.$queryRaw<UserRow[]>`
       SELECT id,email,"displayName","passwordHash","disabledAt"
@@ -147,13 +148,13 @@ export class ProductionService {
       user.disabledAt ||
       !(await verifyPassword(input.password, user.passwordHash))
     ) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException("Invalid credentials");
     }
     return this.issueSession(user, meta);
   }
 
   private async issueSession(
-    user: Pick<UserRow, 'id' | 'email' | 'displayName'>,
+    user: Pick<UserRow, "id" | "email" | "displayName">,
     meta: { userAgent?: string; ip?: string },
     familyId: string = randomUUID(),
     knownWorkspaceId?: string,
@@ -162,8 +163,7 @@ export class ProductionService {
     const refreshHash = tokenHash(refreshToken);
     const sessionId = randomUUID();
     const expiresAt = new Date(
-      Date.now() +
-        Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86_400_000,
+      Date.now() + Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86_400_000,
     );
     await this.prisma.$executeRaw`
       INSERT INTO "AuthSession"
@@ -204,7 +204,7 @@ export class ProductionService {
     meta: { userAgent?: string; ip?: string },
   ) {
     if (!refreshToken) {
-      throw new UnauthorizedException('refreshToken is required');
+      throw new UnauthorizedException("refreshToken is required");
     }
     const currentHash = tokenHash(refreshToken);
     const sessions = await this.prisma.$queryRaw<SessionRow[]>`
@@ -216,24 +216,23 @@ export class ProductionService {
       LIMIT 1
     `;
     const current = sessions[0];
-    if (!current) throw new UnauthorizedException('Invalid refresh token');
+    if (!current) throw new UnauthorizedException("Invalid refresh token");
 
     if (current.replacedByHash || current.revokedAt) {
       await this.revokeFamily(current.familyId);
       throw new UnauthorizedException(
-        'Refresh token reuse detected; session family revoked',
+        "Refresh token reuse detected; session family revoked",
       );
     }
     if (new Date(current.expiresAt) <= new Date()) {
-      throw new UnauthorizedException('Refresh token expired');
+      throw new UnauthorizedException("Refresh token expired");
     }
 
     const nextToken = randomToken();
     const nextHash = tokenHash(nextToken);
     const nextSessionId = randomUUID();
     const expiresAt = new Date(
-      Date.now() +
-        Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86_400_000,
+      Date.now() + Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86_400_000,
     );
 
     const rotated = await this.prisma.$transaction(async (tx) => {
@@ -258,7 +257,7 @@ export class ProductionService {
     if (!rotated) {
       await this.revokeFamily(current.familyId);
       throw new UnauthorizedException(
-        'Refresh token reuse detected; session family revoked',
+        "Refresh token reuse detected; session family revoked",
       );
     }
 
@@ -310,10 +309,10 @@ export class ProductionService {
     input: { email?: string; role?: string },
   ) {
     const email = input.email?.trim().toLowerCase();
-    const role = ['ADMIN', 'MEMBER', 'VIEWER'].includes(input.role ?? '')
+    const role = ["ADMIN", "MEMBER", "VIEWER"].includes(input.role ?? "")
       ? input.role!
-      : 'MEMBER';
-    if (!email) throw new BadRequestException('email is required');
+      : "MEMBER";
+    if (!email) throw new BadRequestException("email is required");
 
     const allowed = await this.prisma.$queryRaw<{ role: string }[]>`
       SELECT role::text FROM "WorkspaceMember"
@@ -321,8 +320,8 @@ export class ProductionService {
         AND "userId"=${invitedByUserId}::uuid
       LIMIT 1
     `;
-    if (!['OWNER', 'ADMIN'].includes(allowed[0]?.role ?? '')) {
-      throw new ForbiddenException('Only owners and admins can invite members');
+    if (!["OWNER", "ADMIN"].includes(allowed[0]?.role ?? "")) {
+      throw new ForbiddenException("Only owners and admins can invite members");
     }
 
     const token = randomToken();
@@ -334,21 +333,21 @@ export class ProductionService {
         (${randomUUID()}::uuid,${workspaceId}::uuid,${email},${role}::"WorkspaceRole",${tokenHash(token)},${invitedByUserId}::uuid,${expiresAt})
     `;
 
-    const appUrl = process.env.PUBLIC_APP_URL ?? 'http://localhost:3000';
+    const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3001";
     const inviteUrl = `${appUrl}/invite?token=${encodeURIComponent(token)}`;
     await this.sendEmail(
       email,
-      'You are invited to LeadSignal',
+      "You are invited to LeadSignal",
       `<p>You were invited to a LeadSignal workspace.</p><p><a href="${inviteUrl}">Accept invitation</a></p>`,
     );
     return {
       success: true,
-      ...(process.env.NODE_ENV === 'production' ? {} : { inviteUrl, token }),
+      ...(process.env.NODE_ENV === "production" ? {} : { inviteUrl, token }),
     };
   }
 
   async acceptInvitation(token: string | undefined, userId: string) {
-    if (!token) throw new BadRequestException('token is required');
+    if (!token) throw new BadRequestException("token is required");
     const rows = await this.prisma.$queryRaw<
       {
         id: string;
@@ -370,7 +369,9 @@ export class ProductionService {
     `;
     const invitation = rows[0];
     if (!invitation) {
-      throw new NotFoundException('Invitation is invalid, expired or already used');
+      throw new NotFoundException(
+        "Invitation is invalid, expired or already used",
+      );
     }
     if (invitation.email !== invitation.userEmail.toLowerCase()) {
       await this.prisma.$executeRaw`
@@ -378,7 +379,7 @@ export class ProductionService {
         WHERE id=${invitation.id}::uuid
       `;
       throw new ForbiddenException(
-        'Invitation email does not match authenticated user',
+        "Invitation email does not match authenticated user",
       );
     }
 
@@ -395,18 +396,18 @@ export class ProductionService {
 
   async oauthStart(provider: string, workspaceId: string, userId: string) {
     const normalized = provider.toLowerCase();
-    if (!['github', 'google'].includes(normalized)) {
+    if (!["github", "google"].includes(normalized)) {
       return {
         provider: normalized,
-        mode: 'API_KEY_ONLY',
+        mode: "API_KEY_ONLY",
         message:
-          'This provider does not expose delegated OAuth for third-party API access.',
+          "This provider does not expose delegated OAuth for third-party API access.",
       };
     }
 
     const state = randomToken(32);
     const { verifier, challenge } = createPkce();
-    const apiUrl = process.env.PUBLIC_API_URL ?? 'http://localhost:4000/api';
+    const apiUrl = process.env.PUBLIC_API_URL ?? "http://localhost:4000/api";
     const redirectUri = `${apiUrl}/connections/${normalized}/complete`;
     await this.prisma.$executeRaw`
       INSERT INTO "OAuthState"
@@ -416,34 +417,33 @@ export class ProductionService {
     `;
 
     let authorizationUrl: URL;
-    if (normalized === 'github') {
-      authorizationUrl = new URL('https://github.com/login/oauth/authorize');
+    if (normalized === "github") {
+      authorizationUrl = new URL("https://github.com/login/oauth/authorize");
       authorizationUrl.search = new URLSearchParams({
-        client_id: this.required('GITHUB_OAUTH_CLIENT_ID'),
+        client_id: this.required("GITHUB_OAUTH_CLIENT_ID"),
         redirect_uri: redirectUri,
         state,
-        scope: 'read:user models:read',
+        scope: "read:user models:read",
       }).toString();
     } else {
       authorizationUrl = new URL(
-        'https://accounts.google.com/o/oauth2/v2/auth',
+        "https://accounts.google.com/o/oauth2/v2/auth",
       );
       authorizationUrl.search = new URLSearchParams({
-        client_id: this.required('GOOGLE_OAUTH_CLIENT_ID'),
+        client_id: this.required("GOOGLE_OAUTH_CLIENT_ID"),
         redirect_uri: redirectUri,
         state,
-        response_type: 'code',
-        access_type: 'offline',
-        prompt: 'consent',
-        scope:
-          'openid email https://www.googleapis.com/auth/cloud-platform',
+        response_type: "code",
+        access_type: "offline",
+        prompt: "consent",
+        scope: "openid email https://www.googleapis.com/auth/cloud-platform",
         code_challenge: challenge,
-        code_challenge_method: 'S256',
+        code_challenge_method: "S256",
       }).toString();
     }
     return {
       provider: normalized,
-      mode: 'OAUTH',
+      mode: "OAUTH",
       authorizationUrl: authorizationUrl.toString(),
     };
   }
@@ -454,7 +454,7 @@ export class ProductionService {
     state: string | undefined,
   ) {
     if (!code || !state) {
-      throw new BadRequestException('code and state are required');
+      throw new BadRequestException("code and state are required");
     }
     const normalized = provider.toLowerCase();
     const rows = await this.prisma.$queryRaw<OAuthStateRow[]>`
@@ -468,7 +468,7 @@ export class ProductionService {
     `;
     const saved = rows[0];
     if (!saved?.workspaceId || !saved.userId) {
-      throw new BadRequestException('Invalid, expired or replayed OAuth state');
+      throw new BadRequestException("Invalid, expired or replayed OAuth state");
     }
 
     const tokenData = await this.exchangeOAuthCode(normalized, code, saved);
@@ -478,7 +478,11 @@ export class ProductionService {
       saved.userId,
       tokenData,
     );
-    return { success: true, provider: normalized, workspaceId: saved.workspaceId };
+    return {
+      success: true,
+      provider: normalized,
+      workspaceId: saved.workspaceId,
+    };
   }
 
   private async exchangeOAuthCode(
@@ -486,30 +490,30 @@ export class ProductionService {
     code: string,
     state: OAuthStateRow,
   ): Promise<TokenPayload> {
-    if (provider === 'reddit') {
-        // Reddit token exchange
+    if (provider === "reddit") {
+      // Reddit token exchange
     }
-    if (provider === 'github') {
+    if (provider === "github") {
       return this.fetchToken(
-        'https://github.com/login/oauth/access_token',
+        "https://github.com/login/oauth/access_token",
         new URLSearchParams({
-          client_id: this.required('GITHUB_OAUTH_CLIENT_ID'),
-          client_secret: this.required('GITHUB_OAUTH_CLIENT_SECRET'),
+          client_id: this.required("GITHUB_OAUTH_CLIENT_ID"),
+          client_secret: this.required("GITHUB_OAUTH_CLIENT_SECRET"),
           code,
           redirect_uri: state.redirectUri,
         }),
-        { Accept: 'application/json' },
+        { Accept: "application/json" },
       );
     }
     return this.fetchToken(
-      'https://oauth2.googleapis.com/token',
+      "https://oauth2.googleapis.com/token",
       new URLSearchParams({
-        client_id: this.required('GOOGLE_OAUTH_CLIENT_ID'),
-        client_secret: this.required('GOOGLE_OAUTH_CLIENT_SECRET'),
+        client_id: this.required("GOOGLE_OAUTH_CLIENT_ID"),
+        client_secret: this.required("GOOGLE_OAUTH_CLIENT_SECRET"),
         code,
         redirect_uri: state.redirectUri,
-        grant_type: 'authorization_code',
-        code_verifier: state.codeVerifier ?? '',
+        grant_type: "authorization_code",
+        code_verifier: state.codeVerifier ?? "",
       }),
       {},
     );
@@ -521,9 +525,9 @@ export class ProductionService {
     headers: Record<string, string>,
   ): Promise<TokenPayload> {
     const response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'content-type': 'application/x-www-form-urlencoded',
+        "content-type": "application/x-www-form-urlencoded",
         ...headers,
       },
       body,
@@ -534,7 +538,7 @@ export class ProductionService {
     };
     if (!response.ok || data.error || !data.access_token) {
       throw new BadRequestException(
-        data.error_description ?? data.error ?? 'OAuth token exchange failed',
+        data.error_description ?? data.error ?? "OAuth token exchange failed",
       );
     }
     return data;
@@ -584,9 +588,7 @@ export class ProductionService {
     rawTokenData: TokenPayload,
   ) {
     const prismaProvider =
-      provider === 'github'
-        ? LlmProvider.GITHUB_MODELS
-        : LlmProvider.GEMINI;
+      provider === "github" ? LlmProvider.GITHUB_MODELS : LlmProvider.GEMINI;
     const tokenData = this.normalizeTokenPayload(rawTokenData);
     const access = this.crypto.encrypt(tokenData.access_token);
     const existing = await this.prisma.llmConnection.findFirst({
@@ -594,7 +596,7 @@ export class ProductionService {
         workspaceId,
         ownerUserId: userId,
         provider: prismaProvider,
-        accountLabel: 'OAuth',
+        accountLabel: "OAuth",
         deletedAt: null,
       },
     });
@@ -602,7 +604,7 @@ export class ProductionService {
       ? await this.prisma.llmConnection.update({
           where: { id: existing.id },
           data: {
-            status: 'ACTIVE',
+            status: "ACTIVE",
             poolEnabled: true,
             encryptedCredential: access.encrypted,
             credentialIv: access.iv,
@@ -616,8 +618,8 @@ export class ProductionService {
             ownerUserId: userId,
             provider: prismaProvider,
             name: `${provider} OAuth`,
-            accountLabel: 'OAuth',
-            status: 'ACTIVE',
+            accountLabel: "OAuth",
+            status: "ACTIVE",
             poolEnabled: true,
             encryptedCredential: access.encrypted,
             credentialIv: access.iv,
@@ -626,11 +628,10 @@ export class ProductionService {
             models: {
               create: {
                 model:
-                  provider === 'github'
-                    ? process.env.GITHUB_MODELS_DEFAULT_MODEL ??
-                      'openai/gpt-4.1-mini'
-                    : process.env.GEMINI_DEFAULT_MODEL ??
-                      'gemini-2.5-flash',
+                  provider === "github"
+                    ? (process.env.GITHUB_MODELS_DEFAULT_MODEL ??
+                      "openai/gpt-4.1-mini")
+                    : (process.env.GEMINI_DEFAULT_MODEL ?? "gemini-2.5-flash"),
               },
             },
           },
@@ -645,7 +646,7 @@ export class ProductionService {
         (${randomUUID()}::uuid,${connection.id}::uuid,${prismaProvider}::"LlmProvider",
          ${encrypted.encrypted},${encrypted.iv},${encrypted.authTag},
          ${tokenData.expires_at ? new Date(tokenData.expires_at) : null},
-         ${typeof tokenData.scope === 'string' ? tokenData.scope : null},NOW())
+         ${typeof tokenData.scope === "string" ? tokenData.scope : null},NOW())
       ON CONFLICT ("connectionId") DO UPDATE SET
         "encryptedCredential"=EXCLUDED."encryptedCredential",
         "credentialIv"=EXCLUDED."credentialIv",
@@ -689,25 +690,25 @@ export class ProductionService {
     let refreshed: TokenPayload;
     if (stored.provider === LlmProvider.GEMINI) {
       refreshed = await this.fetchToken(
-        'https://oauth2.googleapis.com/token',
+        "https://oauth2.googleapis.com/token",
         new URLSearchParams({
-          client_id: this.required('GOOGLE_OAUTH_CLIENT_ID'),
-          client_secret: this.required('GOOGLE_OAUTH_CLIENT_SECRET'),
-          grant_type: 'refresh_token',
+          client_id: this.required("GOOGLE_OAUTH_CLIENT_ID"),
+          client_secret: this.required("GOOGLE_OAUTH_CLIENT_SECRET"),
+          grant_type: "refresh_token",
           refresh_token: tokenData.refresh_token,
         }),
         {},
       );
     } else if (stored.provider === LlmProvider.GITHUB_MODELS) {
       refreshed = await this.fetchToken(
-        'https://github.com/login/oauth/access_token',
+        "https://github.com/login/oauth/access_token",
         new URLSearchParams({
-          client_id: this.required('GITHUB_OAUTH_CLIENT_ID'),
-          client_secret: this.required('GITHUB_OAUTH_CLIENT_SECRET'),
-          grant_type: 'refresh_token',
+          client_id: this.required("GITHUB_OAUTH_CLIENT_ID"),
+          client_secret: this.required("GITHUB_OAUTH_CLIENT_SECRET"),
+          grant_type: "refresh_token",
           refresh_token: tokenData.refresh_token,
         }),
-        { Accept: 'application/json' },
+        { Accept: "application/json" },
       );
     } else {
       return tokenData.access_token;
@@ -737,7 +738,7 @@ export class ProductionService {
           credentialIv: access.iv,
           credentialAuthTag: access.authTag,
           lastVerifiedAt: new Date(),
-          status: 'ACTIVE',
+          status: "ACTIVE",
         },
       }),
     ]);
@@ -884,22 +885,22 @@ export class ProductionService {
   private async sendEmail(to: string, subject: string, html: string) {
     const key = process.env.RESEND_API_KEY;
     if (!key) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('RESEND_API_KEY is required in production');
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("RESEND_API_KEY is required in production");
       }
       console.log({ to, subject, html });
       return;
     }
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
-        'content-type': 'application/json',
+        "content-type": "application/json",
       },
       body: JSON.stringify({
         from:
           process.env.INVITATION_FROM_EMAIL ??
-          'LeadSignal <noreply@example.com>',
+          "LeadSignal <noreply@example.com>",
         to: [to],
         subject,
         html,
