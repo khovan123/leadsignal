@@ -3,12 +3,12 @@ import test from 'node:test';
 import type { Page } from 'playwright';
 import { extractRedditCards } from '../../src/reddit-public/reddit-page-parser';
 
-test('Reddit card evaluator does not depend on tsx runtime helpers', async () => {
-  let evaluator: ((elements: Element[]) => unknown) | undefined;
+test('Reddit card evaluator is a self-contained string expression', async () => {
+  let evaluator: string | undefined;
   const page = {
     locator: () => ({
-      evaluateAll: async (callback: (elements: Element[]) => unknown) => {
-        evaluator = callback;
+      evaluateAll: async (expression: string) => {
+        evaluator = expression;
         return [];
       },
     }),
@@ -17,6 +17,6 @@ test('Reddit card evaluator does not depend on tsx runtime helpers', async () =>
   await extractRedditCards(page);
 
   assert.ok(evaluator);
-  assert.doesNotMatch(evaluator.toString(), /__name/);
-  assert.match(evaluator.toString(), /function anonymous/);
+  assert.doesNotMatch(evaluator, /__name/);
+  assert.match(evaluator, /^\s*\(elements\)\s*=>/);
 });
