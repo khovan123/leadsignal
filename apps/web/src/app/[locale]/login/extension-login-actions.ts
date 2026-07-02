@@ -37,6 +37,16 @@ export async function exchangeExtensionTicketAction(
     return { ok: false, error: 'Extension login ticket is required.' };
   }
 
+  const store = await cookies();
+
+  // Pairing/authentication runs while the workspace owner is already signed in.
+  // Never replace that privileged dashboard session with the extension device's
+  // MEMBER session. Ticket exchange remains available for a genuinely signed-out
+  // browser where no dashboard access token exists.
+  if (store.get('ls_access')?.value) {
+    return { ok: true };
+  }
+
   try {
     const response = await fetch(`${apiUrl}/api/auth/extension/exchange`, {
       method: 'POST',
@@ -53,7 +63,6 @@ export async function exchangeExtensionTicketAction(
     }
 
     const session = (await response.json()) as Session;
-    const store = await cookies();
     const secure = process.env.NODE_ENV === 'production';
     const refreshAge = Number(process.env.JWT_REFRESH_TTL_DAYS ?? 30) * 86400;
 

@@ -25,11 +25,17 @@ export interface RedditPageCard {
 }
 
 /**
- * Pass browser-side code as a string so tsx/esbuild cannot attach helpers such
- * as `__name` to a function that Playwright later serializes into the page.
+ * Execute a self-contained browser expression. Keeping the complete parser in a
+ * string prevents tsx/esbuild helpers such as `__name` from leaking into the
+ * browser context, while the IIFE ensures Playwright returns the card array
+ * rather than the function expression itself.
  */
 const EXTRACT_REDDIT_CARDS_EXPRESSION = String.raw`
-  (elements) => {
+  (() => {
+    const elements = Array.from(
+      document.querySelectorAll(${JSON.stringify(REDDIT_POST_SELECTOR)}),
+    );
+
     const text = (value) => {
       const normalized = value == null
         ? undefined
@@ -178,11 +184,13 @@ const EXTRACT_REDDIT_CARDS_EXPRESSION = String.raw`
     }
 
     return Array.from(results.values());
-  }
+  })()
 `;
 
-export function extractRedditCards(page: Page): Promise<RedditPageCard[]> {
-  return page
-    .locator(REDDIT_POST_SELECTOR)
-    .evaluateAll(EXTRACT_REDDIT_CARDS_EXPRESSION) as Promise<RedditPageCard[]>;
+export async function extractRedditCards(page: Page): Promise<RedditPageCard[]> {
+  const cards = await page.evaluate(EXTRACT_REDDIT_CARDS_EXPRESSION);
+  if (!Array.isArray(cards)) {
+    throw new TypeError('Reddit page parser did not return a card array');
+  }
+  return cards as RedditPageCard[];
 }
