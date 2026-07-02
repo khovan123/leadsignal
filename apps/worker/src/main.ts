@@ -24,6 +24,12 @@ function createValkeyConnection() {
   };
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error
+    ? `${error.name}: ${error.message}`
+    : String(error);
+}
+
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['log', 'error', 'warn'],
@@ -42,6 +48,13 @@ async function bootstrap() {
         workspaceId: string;
         postId: string;
       };
+      console.log('[classification] started', {
+        jobId: String(job.id),
+        workspaceId,
+        postId,
+        attempt: job.attemptsMade + 1,
+      });
+
       const post = await prisma.redditPost.findUniqueOrThrow({
         where: { id: postId },
       });
@@ -72,7 +85,8 @@ async function bootstrap() {
         },
       });
 
-      if (result.output.isBuyingSignal && priorityScore >= 50) {
+      const leadCreated = result.output.isBuyingSignal && priorityScore >= 50;
+      if (leadCreated) {
         await prisma.lead.upsert({
           where: { workspaceId_postId: { workspaceId, postId } },
           update: {
@@ -90,9 +104,20 @@ async function bootstrap() {
         });
       }
 
+      console.log('[classification] completed', {
+        jobId: String(job.id),
+        workspaceId,
+        postId,
+        provider: result.provider,
+        model: result.model,
+        isBuyingSignal: result.output.isBuyingSignal,
+        priorityScore,
+        leadCreated,
+      });
+
       return {
         classificationId: classification.id,
-        leadCreated: result.output.isBuyingSignal && priorityScore >= 50,
+        leadCreated,
       };
     },
     {
@@ -109,11 +134,28 @@ async function bootstrap() {
         userId: string;
         sourceIds?: string[];
       };
+      console.log('[reddit-collection] started', {
+        jobId: String(job.id),
+        workspaceId,
+        sourceIds: sourceIds ?? 'all enabled sources',
+        attempt: job.attemptsMade + 1,
+      });
       await job.updateProgress({ status: 'RUNNING' });
       const result = await redditCollector.collect({ workspaceId, sourceIds });
       await job.updateProgress({
         status: 'COMPLETED',
+        posts: result.posts,
+        failures: result.failures,
         sources: result.sourceResults,
+      });
+      console.log('[reddit-collection] completed', {
+        jobId: String(job.id),
+        workspaceId,
+        workspaces: result.workspaces,
+        sources: result.sources,
+        newPosts: result.posts,
+        failures: result.failures,
+        sourceResults: result.sourceResults,
       });
       return result;
     },
@@ -125,6 +167,34 @@ async function bootstrap() {
       ),
     },
   );
+
+  worker.on('failed', (job, error) => {
+    console.error('[classification] failed', {
+      jobId: job?.id ? String(job.id) : 'unknown',
+      data: job?.data,
+      attempt: job ? job.attemptsMade : undefined,
+      error: errorMessage(error),
+      stack: error.stack,
+    });
+  });
+  worker.on('error', (error) => {
+    console.error('[classification] worker error', error);
+  });
+  redditWorker.on('failed', (job, error) => {
+    console.error('[reddit-collection] failed', {
+      jobId: job?.id ? String(job.id) : 'unknown',
+      data: job?.data,
+      attempt: job ? job.attemptsMade : undefined,
+      error: errorMessage(error),
+      stack: error.stack,
+    });
+  });
+  redditWorker.on('error', (error) => {
+    console.error('[reddit-collection] worker error', error);
+  });
+  redditWorker.on('stalled', (jobId) => {
+    console.warn('[reddit-collection] stalled', { jobId: String(jobId) });
+  });
 
   const collect = async () => {
     const leaseSeconds = Math.max(
@@ -143,10 +213,11 @@ async function bootstrap() {
     if (acquired[0]?.ownerId !== workerId) return;
 
     try {
+      console.log('[reddit-scheduler] collection started');
       const result = await redditCollector.collect();
-      console.log('Reddit backend crawler completed', result);
+      console.log('[reddit-scheduler] collection completed', result);
     } catch (error) {
-      console.error('Reddit backend crawler failed', error);
+      console.error('[reddit-scheduler] collection failed', error);
     }
   };
 
@@ -190,7 +261,18 @@ async function bootstrap() {
 
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
-  console.log('LeadSignal worker started');
+  console.log('LeadSignal worker started', {
+    workerId,
+    valkey: `${connection.host}:${connection.port}/${connection.db}`,
+    classificationConcurrency: Number(process.env.WORKER_CONCURRENCY ?? 20),
+    redditConcurrency: Math.max(
+      1,
+      Number(process.env.REDDIT_COLLECTION_CONCURRENCY ?? 1),
+    ),
+  });
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('LeadSignal worker failed to start', error);
+  process.exitCode = 1;
+});
