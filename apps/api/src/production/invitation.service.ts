@@ -38,7 +38,7 @@ export class InvitationService {
 
     const token = randomToken();
     const expiresAt = new Date(Date.now() + 7 * 86400000);
-    const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3001";
+    const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3000";
     const locale = membership.locale === "en" ? "en" : "vi";
     const inviteUrl = `${appUrl}/${locale}/invite?token=${encodeURIComponent(token)}`;
     const subject = "LeadSignal workspace invitation";

@@ -1,6 +1,6 @@
 const LS_DEFAULT_CONFIG = {
   apiBase: "http://localhost:4000/api",
-  appOrigin: "http://localhost:3001",
+  appOrigin: "http://localhost:3000",
 };
 
 async function lsGetConfig() {

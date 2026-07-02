@@ -333,7 +333,7 @@ export class ProductionService {
         (${randomUUID()}::uuid,${workspaceId}::uuid,${email},${role}::"WorkspaceRole",${tokenHash(token)},${invitedByUserId}::uuid,${expiresAt})
     `;
 
-    const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3001";
+    const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3000";
     const inviteUrl = `${appUrl}/invite?token=${encodeURIComponent(token)}`;
     await this.sendEmail(
       email,

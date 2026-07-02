@@ -31,7 +31,7 @@ export class ProviderOAuthController {
       CompleteProviderOAuthCommand,
       { provider: string }
     >(new CompleteProviderOAuthCommand(provider, code, state));
-    const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3001";
+    const appUrl = process.env.PUBLIC_APP_URL ?? "http://localhost:3000";
     return {
       url: `${appUrl}/vi/llm?connected=${encodeURIComponent(result.provider)}`,
       statusCode: 302,
