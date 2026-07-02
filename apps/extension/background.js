@@ -92,10 +92,12 @@ async function pairDevice(payload) {
     [LS_KEYS.deviceId]: result.deviceId,
     [LS_KEYS.workspaceId]: result.workspaceId,
   });
-  const redditSession = await syncRedditSession().catch((error) => ({
-    ok: false,
-    error: error.message || String(error),
-  }));
+  const redditSession = await syncRedditSession().catch(async (error) => {
+    const message = error.message || String(error);
+    console.error('[LeadSignal] Reddit session sync failed after pairing', error);
+    await chrome.storage.local.set({ redditSessionSyncError: message });
+    return { ok: false, error: message };
+  });
   return {
     ok: true,
     deviceId: result.deviceId,
@@ -156,7 +158,9 @@ async function getRedditCookies() {
 async function syncRedditSession() {
   const stored = await chrome.storage.local.get(LS_KEYS.deviceId);
   if (!stored[LS_KEYS.deviceId]) {
-    return { ok: false, skipped: true, error: 'Extension has not been paired' };
+    const error = 'Extension has not been paired';
+    await chrome.storage.local.set({ redditSessionSyncError: error });
+    return { ok: false, skipped: true, error };
   }
 
   const cookies = await getRedditCookies();
@@ -189,6 +193,10 @@ async function syncRedditSession() {
   await chrome.storage.local.set({
     redditSessionSyncedAt: result.syncedAt,
     redditSessionSyncError: null,
+  });
+  console.info('[LeadSignal] Reddit session synchronized', {
+    cookieCount: result.cookieCount,
+    syncedAt: result.syncedAt,
   });
   return result;
 }
