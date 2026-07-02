@@ -261,6 +261,11 @@ export function ExtensionLoginClient({
           return;
         }
 
+        setState((current) => ({
+          ...current,
+          redditSessionSyncedAt: redditSession.syncedAt,
+          redditSessionSyncError: undefined,
+        }));
         releaseFlowLock();
         window.location.replace(`/${locale}`);
       }
