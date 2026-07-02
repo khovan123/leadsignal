@@ -40,6 +40,21 @@ async function bootstrap() {
   const emailOutbox = app.get(EmailOutboxService);
   const workerId = randomUUID();
   const connection = createValkeyConnection();
+  let redditCollectionBusy = false;
+
+  async function waitForRedditCollectionSlot(jobId: string) {
+    let announced = false;
+    while (redditCollectionBusy) {
+      if (!announced) {
+        announced = true;
+        console.log('[reddit-collection] waiting for active collection', {
+          jobId,
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    redditCollectionBusy = true;
+  }
 
   const worker = new Worker(
     'post-classification',
@@ -110,6 +125,7 @@ async function bootstrap() {
         postId,
         provider: result.provider,
         model: result.model,
+        fallbackFailures: result.fallbackFailures,
         isBuyingSignal: result.output.isBuyingSignal,
         priorityScore,
         leadCreated,
@@ -134,30 +150,37 @@ async function bootstrap() {
         userId: string;
         sourceIds?: string[];
       };
+      const jobId = String(job.id);
       console.log('[reddit-collection] started', {
-        jobId: String(job.id),
+        jobId,
         workspaceId,
         sourceIds: sourceIds ?? 'all enabled sources',
         attempt: job.attemptsMade + 1,
       });
-      await job.updateProgress({ status: 'RUNNING' });
-      const result = await redditCollector.collect({ workspaceId, sourceIds });
-      await job.updateProgress({
-        status: 'COMPLETED',
-        posts: result.posts,
-        failures: result.failures,
-        sources: result.sourceResults,
-      });
-      console.log('[reddit-collection] completed', {
-        jobId: String(job.id),
-        workspaceId,
-        workspaces: result.workspaces,
-        sources: result.sources,
-        newPosts: result.posts,
-        failures: result.failures,
-        sourceResults: result.sourceResults,
-      });
-      return result;
+      await job.updateProgress({ status: 'WAITING_FOR_BROWSER' });
+      await waitForRedditCollectionSlot(jobId);
+      try {
+        await job.updateProgress({ status: 'RUNNING' });
+        const result = await redditCollector.collect({ workspaceId, sourceIds });
+        await job.updateProgress({
+          status: 'COMPLETED',
+          posts: result.posts,
+          failures: result.failures,
+          sources: result.sourceResults,
+        });
+        console.log('[reddit-collection] completed', {
+          jobId,
+          workspaceId,
+          workspaces: result.workspaces,
+          sources: result.sources,
+          newPosts: result.posts,
+          failures: result.failures,
+          sourceResults: result.sourceResults,
+        });
+        return result;
+      } finally {
+        redditCollectionBusy = false;
+      }
     },
     {
       connection,
@@ -197,27 +220,37 @@ async function bootstrap() {
   });
 
   const collect = async () => {
-    const leaseSeconds = Math.max(
-      60,
-      Number(process.env.REDDIT_COLLECTOR_INTERVAL_SECONDS ?? 300),
-    );
-    const acquired = await prisma.$queryRaw<{ ownerId: string }[]>`
-      INSERT INTO "CollectorLease" (name,"ownerId","expiresAt","updatedAt")
-      VALUES ('reddit',${workerId},NOW() + (${leaseSeconds} * INTERVAL '1 second'),NOW())
-      ON CONFLICT (name) DO UPDATE
-      SET "ownerId"=EXCLUDED."ownerId","expiresAt"=EXCLUDED."expiresAt","updatedAt"=NOW()
-      WHERE "CollectorLease"."expiresAt" < NOW()
-         OR "CollectorLease"."ownerId"=${workerId}
-      RETURNING "ownerId"
-    `;
-    if (acquired[0]?.ownerId !== workerId) return;
+    if (redditCollectionBusy) {
+      console.log(
+        '[reddit-scheduler] skipped because another collection is active',
+      );
+      return;
+    }
+    redditCollectionBusy = true;
 
     try {
+      const leaseSeconds = Math.max(
+        60,
+        Number(process.env.REDDIT_COLLECTOR_INTERVAL_SECONDS ?? 300),
+      );
+      const acquired = await prisma.$queryRaw<{ ownerId: string }[]>`
+        INSERT INTO "CollectorLease" (name,"ownerId","expiresAt","updatedAt")
+        VALUES ('reddit',${workerId},NOW() + (${leaseSeconds} * INTERVAL '1 second'),NOW())
+        ON CONFLICT (name) DO UPDATE
+        SET "ownerId"=EXCLUDED."ownerId","expiresAt"=EXCLUDED."expiresAt","updatedAt"=NOW()
+        WHERE "CollectorLease"."expiresAt" < NOW()
+           OR "CollectorLease"."ownerId"=${workerId}
+        RETURNING "ownerId"
+      `;
+      if (acquired[0]?.ownerId !== workerId) return;
+
       console.log('[reddit-scheduler] collection started');
       const result = await redditCollector.collect();
       console.log('[reddit-scheduler] collection completed', result);
     } catch (error) {
       console.error('[reddit-scheduler] collection failed', error);
+    } finally {
+      redditCollectionBusy = false;
     }
   };
 
