@@ -10,6 +10,7 @@
   "permissions": ["storage", "cookies", "scripting"],
   "host_permissions": [
     "https://reddit.com/*",
+    "https://www.reddit.com/*",
     "https://*.reddit.com/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
