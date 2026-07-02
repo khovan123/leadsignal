@@ -10,10 +10,12 @@ import {
   Req,
 } from '@nestjs/common';
 import { ExtensionAuthService } from './extension-auth.service';
+import { RedditSessionSyncService } from './reddit-session-sync.service';
 import type {
   CreatePairingCodeInput,
   ExtensionBatchInput,
   PairExtensionInput,
+  SyncRedditSessionInput,
   VerifyExtensionInput,
 } from './extension-device.types';
 
@@ -22,6 +24,8 @@ export class ExtensionAuthController {
   constructor(
     @Inject(ExtensionAuthService)
     private readonly extensionAuth: ExtensionAuthService,
+    @Inject(RedditSessionSyncService)
+    private readonly redditSessionSync: RedditSessionSyncService,
   ) {}
 
   @Post('auth/extension/pair')
@@ -46,6 +50,11 @@ export class ExtensionAuthController {
     @Ip() ip?: string,
   ) {
     return this.extensionAuth.exchangeTicket(ticket, { userAgent, ip });
+  }
+
+  @Post('auth/extension/reddit-session')
+  syncRedditSession(@Body() body: SyncRedditSessionInput) {
+    return this.redditSessionSync.sync(body);
   }
 
   @Post('extension/ingest')
