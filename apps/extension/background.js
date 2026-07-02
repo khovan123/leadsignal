@@ -54,6 +54,7 @@ async function getState() {
     LS_KEYS.workspaceId,
     LS_KEYS.publicKey,
     'redditSessionSyncedAt',
+    'redditSessionSyncError',
   ]);
   return {
     ok: true,
@@ -64,6 +65,7 @@ async function getState() {
       workspaceId: stored[LS_KEYS.workspaceId],
       hasKey: Boolean(stored[LS_KEYS.publicKey]),
       redditSessionSyncedAt: stored.redditSessionSyncedAt,
+      redditSessionSyncError: stored.redditSessionSyncError,
       version: chrome.runtime.getManifest().version,
       executionMode: 'BACKEND_ONLY',
     },
@@ -126,7 +128,22 @@ async function createDeviceTicket() {
 
 async function authenticateDevice() {
   const ticket = await createDeviceTicket();
-  return { ok: true, ticket };
+  const redditSession = await syncRedditSession().catch(async (error) => {
+    const message = error.message || String(error);
+    await chrome.storage.local.set({ redditSessionSyncError: message });
+    return { ok: false, error: message };
+  });
+  return { ok: true, ticket, redditSession };
+}
+
+async function getRedditCookies() {
+  const byDomain = await chrome.cookies.getAll({ domain: 'reddit.com' });
+  const byUrl = await chrome.cookies.getAll({ url: 'https://www.reddit.com/' });
+  const unique = new Map();
+  for (const cookie of [...byDomain, ...byUrl]) {
+    unique.set(`${cookie.storeId || '0'}:${cookie.domain}:${cookie.path}:${cookie.name}`, cookie);
+  }
+  return [...unique.values()];
 }
 
 async function syncRedditSession() {
@@ -135,14 +152,12 @@ async function syncRedditSession() {
     return { ok: false, skipped: true, error: 'Extension has not been paired' };
   }
 
-  const cookies = await chrome.cookies.getAll({ domain: '.reddit.com' });
+  const cookies = await getRedditCookies();
   const authenticated = cookies.filter((cookie) => cookie.value && cookie.name);
   if (authenticated.length === 0) {
-    return {
-      ok: false,
-      skipped: true,
-      error: 'No existing Reddit browser session was found',
-    };
+    const error = 'No existing Reddit browser session was found';
+    await chrome.storage.local.set({ redditSessionSyncError: error });
+    return { ok: false, skipped: true, error };
   }
 
   const ticket = await createDeviceTicket();
@@ -164,13 +179,20 @@ async function syncRedditSession() {
     }),
   });
 
-  await chrome.storage.local.set({ redditSessionSyncedAt: result.syncedAt });
+  await chrome.storage.local.set({
+    redditSessionSyncedAt: result.syncedAt,
+    redditSessionSyncError: null,
+  });
   return result;
 }
 
 function scheduleRedditSessionSync(delayMs = 1_000) {
   clearTimeout(redditSyncTimer);
   redditSyncTimer = setTimeout(() => {
-    syncRedditSession().catch(() => undefined);
+    syncRedditSession().catch(async (error) => {
+      await chrome.storage.local.set({
+        redditSessionSyncError: error.message || String(error),
+      });
+    });
   }, delayMs);
 }
