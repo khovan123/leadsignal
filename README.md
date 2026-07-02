@@ -114,7 +114,7 @@ REDDIT_CRAWLER_ENABLED=false
 
 Open:
 
-- Web: `http://localhost:3001/vi`
+- Web: `http://localhost:3000/vi`
 - API health: `http://localhost:4000/api/health`
 - Swagger: `http://localhost:4000/docs`
 
@@ -124,14 +124,14 @@ Open:
 2. Enable **Developer mode**.
 3. Select **Load unpacked**.
 4. Select the repository directory `apps/extension`.
-5. Reload `http://localhost:3001/vi/login`.
+5. Reload `http://localhost:3000/vi/login`.
 6. Enter `EXTENSION_BOOTSTRAP_CODE` for the first device.
 7. For later devices, enter the one-time pairing code created by an OWNER or ADMIN.
 
 The local extension defaults are:
 
 ```text
-App: http://localhost:3001
+App: http://localhost:3000
 API: http://localhost:4000/api
 ```
 

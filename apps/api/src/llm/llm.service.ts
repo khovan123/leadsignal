@@ -1,17 +1,25 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { createConnectionSchema } from '@leadsignal/contracts';
 import { ConnectionStatus, LlmProvider } from '@prisma/client';
-import { PrismaService } from '../database/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
-import { OpenAiCompatibleStrategy } from './openai-compatible.strategy';
+import { PrismaService } from '../database/prisma.service';
+import { ProductionService } from '../production/production.service';
 import { AnthropicStrategy } from './anthropic.strategy';
 import { GeminiStrategy } from './gemini.strategy';
+import { StrategyError } from './llm.types';
+import { OpenAiCompatibleStrategy } from './openai-compatible.strategy';
 
 @Injectable()
 export class LlmService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly production: ProductionService,
     private readonly openAi: OpenAiCompatibleStrategy,
     private readonly anthropic: AnthropicStrategy,
     private readonly gemini: GeminiStrategy,
@@ -165,14 +173,32 @@ export class LlmService {
     });
   }
 
-  async verify(workspaceId: string, ownerUserId: string, id: string) {
+  async verify(workspaceId: string, actorUserId: string, id: string) {
     const connection = await this.prisma.llmConnection.findFirst({
-      where: { id, workspaceId, ownerUserId, deletedAt: null },
+      where: { id, workspaceId, deletedAt: null },
       include: { models: true },
     });
     if (!connection) throw new NotFoundException('Connection not found');
+
+    const membership = await this.prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId,
+          userId: actorUserId,
+        },
+      },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this workspace');
+    }
+
+    const oauthCredential = await this.production.getFreshProviderCredential(
+      connection.id,
+    );
     const credential =
-      connection.encryptedCredential &&
+      oauthCredential ??
+      (connection.encryptedCredential &&
       connection.credentialIv &&
       connection.credentialAuthTag
         ? this.crypto.decrypt(
@@ -180,7 +206,8 @@ export class LlmService {
             connection.credentialIv,
             connection.credentialAuthTag,
           )
-        : undefined;
+        : undefined);
+
     const strategy = this.openAi.supports(connection.provider)
       ? this.openAi
       : this.anthropic.supports(connection.provider)
@@ -211,11 +238,20 @@ export class LlmService {
         data: {
           status: ConnectionStatus.INVALID,
           lastErrorCode:
-            error instanceof Error
-              ? error.message.slice(0, 100)
-              : 'VERIFY_FAILED',
+            error instanceof StrategyError
+              ? error.code
+              : error instanceof Error
+                ? error.message.slice(0, 100)
+                : 'VERIFY_FAILED',
         },
       });
+
+      if (error instanceof StrategyError) {
+        throw new BadGatewayException({
+          message: error.message,
+          code: error.code,
+        });
+      }
       throw error;
     }
   }

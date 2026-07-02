@@ -115,18 +115,18 @@ test('updates per-source collection settings', async () => {
   assert.equal(updated.body.enabled, false);
 });
 
-test('forces following sources to extension mode', async () => {
+test('stores following sources in backend collection mode', async () => {
   const created = await request(`/workspaces/${workspaceId}/reddit-sources`, {
     method: 'POST',
     body: JSON.stringify({
       type: 'FOLLOWING',
       name: 'My following feed',
-      collectionMode: 'PUBLIC',
+      collectionMode: 'EXTENSION',
       enabled: true,
     }),
   });
   assert.equal(created.response.status, 201);
-  assert.equal(created.body.collectionMode, 'EXTENSION');
+  assert.equal(created.body.collectionMode, 'PUBLIC');
 });
 
 test('queues a manual collection run', async () => {
