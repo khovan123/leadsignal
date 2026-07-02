@@ -130,6 +130,7 @@ async function authenticateDevice() {
   const ticket = await createDeviceTicket();
   const redditSession = await syncRedditSession().catch(async (error) => {
     const message = error.message || String(error);
+    console.error('[LeadSignal] Reddit session sync failed during authentication', error);
     await chrome.storage.local.set({ redditSessionSyncError: message });
     return { ok: false, error: message };
   });
@@ -137,6 +138,12 @@ async function authenticateDevice() {
 }
 
 async function getRedditCookies() {
+  if (!chrome.cookies || typeof chrome.cookies.getAll !== 'function') {
+    throw new Error(
+      'Reddit cookie permission is unavailable. Reload LeadSignal Extension 1.3.1 and accept access to reddit.com.',
+    );
+  }
+
   const byDomain = await chrome.cookies.getAll({ domain: 'reddit.com' });
   const byUrl = await chrome.cookies.getAll({ url: 'https://www.reddit.com/' });
   const unique = new Map();
@@ -190,6 +197,7 @@ function scheduleRedditSessionSync(delayMs = 1_000) {
   clearTimeout(redditSyncTimer);
   redditSyncTimer = setTimeout(() => {
     syncRedditSession().catch(async (error) => {
+      console.error('[LeadSignal] Scheduled Reddit session sync failed', error);
       await chrome.storage.local.set({
         redditSessionSyncError: error.message || String(error),
       });
