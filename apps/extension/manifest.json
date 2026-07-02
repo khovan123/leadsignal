@@ -8,6 +8,7 @@
     "http://localhost/*",
     "http://127.0.0.1/*",
     "https://reddit.com/*",
+    "https://www.reddit.com/*",
     "https://*.reddit.com/*"
   ],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
