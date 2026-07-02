@@ -53,13 +53,18 @@ export class OpenAiCompatibleStrategy implements LlmStrategy {
       await this.verifyNineRouter(connection, model);
     }
 
-    await this.execute(connection, {
-      model,
-      title: 'Test',
-      body: 'Looking for a CRM recommendation.',
-      subreddit: 'test',
-      timeoutMs: 20_000,
-    });
+    const response = await this.sendCompletion(
+      connection,
+      {
+        model,
+        temperature: 0,
+        max_tokens: 8,
+        messages: [{ role: 'user', content: 'Reply with exactly OK.' }],
+      },
+      20_000,
+    );
+
+    if (!response.ok) mapHttp(response.status);
   }
 
   async execute(
