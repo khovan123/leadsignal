@@ -1,7 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import type { BrowserContext, Cookie } from 'playwright';
 import { CryptoService } from '../crypto/crypto.service';
+import { resolveRedditRuntimePath } from './reddit-runtime-path';
 
 export interface RedditSessionCookie {
   name: string;
@@ -24,10 +25,10 @@ interface StoredRedditSession {
   authTag: string;
 }
 
-function sessionFilePath(): string {
-  return resolve(
-    process.env.REDDIT_SESSION_FILE ??
-      '.runtime/reddit-session.json',
+export function redditSessionFilePath(): string {
+  return resolveRedditRuntimePath(
+    process.env.REDDIT_SESSION_FILE,
+    '.runtime/reddit-session.json',
   );
 }
 
@@ -48,7 +49,7 @@ export async function saveRedditSession(
     syncedAt,
     ...payload,
   };
-  const path = sessionFilePath();
+  const path = redditSessionFilePath();
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(temporary, JSON.stringify(record), {
@@ -56,6 +57,12 @@ export async function saveRedditSession(
     mode: 0o600,
   });
   await rename(temporary, path);
+  console.info('[reddit-session] synchronized session saved', {
+    path,
+    workspaceId: input.workspaceId,
+    cookieCount: input.cookies.length,
+    syncedAt,
+  });
   return { syncedAt, cookieCount: input.cookies.length };
 }
 
@@ -63,13 +70,18 @@ export async function applySyncedRedditSession(
   context: BrowserContext,
   crypto = new CryptoService(),
 ): Promise<boolean> {
+  const path = redditSessionFilePath();
   let record: StoredRedditSession;
   try {
-    record = JSON.parse(
-      await readFile(sessionFilePath(), 'utf8'),
-    ) as StoredRedditSession;
+    record = JSON.parse(await readFile(path, 'utf8')) as StoredRedditSession;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.warn('[reddit-session] synchronized session file not found', {
+        path,
+        cwd: process.cwd(),
+      });
+      return false;
+    }
     throw error;
   }
 
@@ -91,7 +103,20 @@ export async function applySyncedRedditSession(
       sameSite: cookie.sameSite ?? 'Lax',
     }));
 
-  if (usable.length === 0) return false;
+  if (usable.length === 0) {
+    console.warn('[reddit-session] synchronized session has no usable cookies', {
+      path,
+      syncedAt: record.syncedAt,
+    });
+    return false;
+  }
+
   await context.addCookies(usable);
+  console.info('[reddit-session] synchronized session loaded', {
+    path,
+    workspaceId: record.workspaceId,
+    cookieCount: usable.length,
+    syncedAt: record.syncedAt,
+  });
   return true;
 }
