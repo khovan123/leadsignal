@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { chromium, type BrowserContext, type Page } from 'playwright';
+import { resolveRedditRuntimePath } from './reddit-runtime-path';
 import { applySyncedRedditSession } from './reddit-session-store';
 
 type PersistentContextOptions = NonNullable<
@@ -34,10 +34,10 @@ function positiveInteger(
     : fallback;
 }
 
-function redditProfileDirectory(): string {
-  return resolve(
-    process.env.REDDIT_BACKEND_PROFILE_DIR ??
-      '.runtime/reddit-browser-profile',
+export function redditProfileDirectory(): string {
+  return resolveRedditRuntimePath(
+    process.env.REDDIT_BACKEND_PROFILE_DIR,
+    '.runtime/reddit-browser-profile',
   );
 }
 
@@ -45,6 +45,10 @@ export async function launchRedditBackendContext(): Promise<BrowserContext> {
   const profileDirectory = redditProfileDirectory();
 
   await mkdir(profileDirectory, { recursive: true });
+  console.info('[reddit] launching backend browser profile', {
+    profileDirectory,
+    cwd: process.cwd(),
+  });
 
   const channel =
     process.env.REDDIT_BROWSER_CHANNEL?.trim() || undefined;
