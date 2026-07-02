@@ -45,6 +45,8 @@ type ExtensionMessage = {
   deviceId?: string;
   workspaceId?: string;
   redditSession?: RedditSessionResult;
+  syncedAt?: string;
+  cookieCount?: number;
 };
 
 function versionAtLeast(current: string | undefined, minimum: string): boolean {
@@ -69,6 +71,41 @@ function acquireFlowLock() {
 
 function releaseFlowLock() {
   sessionStorage.removeItem(FLOW_LOCK_KEY);
+}
+
+function requestRedditSync(): Promise<RedditSessionResult> {
+  return new Promise((resolve) => {
+    const requestId = crypto.randomUUID();
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener('message', onMessage);
+      resolve({ ok: false, error: 'Extension did not respond to Reddit session sync.' });
+    }, 10_000);
+
+    function onMessage(event: MessageEvent<ExtensionMessage>) {
+      if (
+        event.source !== window ||
+        event.origin !== window.location.origin ||
+        event.data?.type !== 'LEADSIGNAL_EXTENSION_REDDIT_SYNC_RESULT' ||
+        event.data.requestId !== requestId
+      ) {
+        return;
+      }
+      window.clearTimeout(timeout);
+      window.removeEventListener('message', onMessage);
+      resolve({
+        ok: event.data.ok,
+        error: event.data.error,
+        syncedAt: event.data.syncedAt,
+        cookieCount: event.data.cookieCount,
+      });
+    }
+
+    window.addEventListener('message', onMessage);
+    window.postMessage(
+      { type: 'LEADSIGNAL_EXTENSION_REDDIT_SYNC', requestId },
+      window.location.origin,
+    );
+  });
 }
 
 export function ExtensionLoginClient({
@@ -213,15 +250,13 @@ export function ExtensionLoginClient({
           return;
         }
 
-        if (!message.redditSession) {
-          handleFlowError(
-            `Extension chưa hỗ trợ đồng bộ Reddit session. Hãy reload LeadSignal Extension ${MIN_EXTENSION_VERSION} rồi thử lại.`,
-          );
-          return;
+        let redditSession = message.redditSession;
+        if (!redditSession?.ok) {
+          redditSession = await requestRedditSync();
         }
-        if (!message.redditSession.ok) {
+        if (!redditSession.ok) {
           handleFlowError(
-            `Reddit session chưa đồng bộ: ${message.redditSession.error ?? 'Không đọc được phiên đăng nhập Reddit hiện tại.'}`,
+            `Reddit session chưa đồng bộ: ${redditSession.error ?? 'Không đọc được phiên đăng nhập Reddit hiện tại.'}`,
           );
           return;
         }
