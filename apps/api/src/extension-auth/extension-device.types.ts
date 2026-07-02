@@ -21,6 +21,22 @@ export interface VerifyExtensionInput {
   proof: string;
 }
 
+export interface RedditSessionCookieInput {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None' | 'no_restriction' | 'lax' | 'strict' | 'unspecified';
+}
+
+export interface SyncRedditSessionInput {
+  ticket: string;
+  cookies: RedditSessionCookieInput[];
+}
+
 export interface ExtensionBatchSource {
   sourceId?: string;
   type: string;

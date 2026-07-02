@@ -1,10 +1,17 @@
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { chromium, type BrowserContext } from 'playwright';
+import { chromium, type BrowserContext, type Page } from 'playwright';
+import { applySyncedRedditSession } from './reddit-session-store';
 
 type PersistentContextOptions = NonNullable<
   Parameters<typeof chromium.launchPersistentContext>[1]
 >;
+
+const REDDIT_LOGIN_CONTROL_SELECTOR = [
+  'a[href*="/login"]',
+  'button:has-text("Log In")',
+  'button:has-text("Đăng nhập")',
+].join(',');
 
 function envBoolean(
   value: string | undefined,
@@ -17,11 +24,25 @@ function envBoolean(
   );
 }
 
-export async function launchRedditBackendContext(): Promise<BrowserContext> {
-  const profileDirectory = resolve(
+function positiveInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.floor(parsed)
+    : fallback;
+}
+
+function redditProfileDirectory(): string {
+  return resolve(
     process.env.REDDIT_BACKEND_PROFILE_DIR ??
       '.runtime/reddit-browser-profile',
   );
+}
+
+export async function launchRedditBackendContext(): Promise<BrowserContext> {
+  const profileDirectory = redditProfileDirectory();
 
   await mkdir(profileDirectory, { recursive: true });
 
@@ -66,36 +87,50 @@ export async function launchRedditBackendContext(): Promise<BrowserContext> {
   }
 }
 
+async function redditSessionMissing(page: Page): Promise<boolean> {
+  const redirectedToLogin =
+    /\/login(?:\/|\?|$)/i.test(page.url());
+
+  const loginControlVisible = await page
+    .locator(REDDIT_LOGIN_CONTROL_SELECTOR)
+    .first()
+    .isVisible()
+    .catch(() => false);
+
+  return redirectedToLogin || loginControlVisible;
+}
+
+async function navigateRedditHome(page: Page): Promise<void> {
+  await page.goto('https://www.reddit.com/', {
+    waitUntil: 'domcontentloaded',
+    timeout: positiveInteger(
+      process.env.REDDIT_CRAWLER_NAVIGATION_TIMEOUT_MS,
+      30_000,
+    ),
+  });
+}
+
 export async function assertRedditSession(
   context: BrowserContext,
 ): Promise<void> {
   const page =
     context.pages()[0] ?? (await context.newPage());
 
-  await page.goto('https://www.reddit.com/', {
-    waitUntil: 'domcontentloaded',
-    timeout: Number(
-      process.env.REDDIT_CRAWLER_NAVIGATION_TIMEOUT_MS ??
-        30_000,
-    ),
-  });
+  await navigateRedditHome(page);
+  if (!(await redditSessionMissing(page))) return;
 
-  const redirectedToLogin =
-    /\/login(?:\/|\?|$)/i.test(page.url());
-
-  const loginControlVisible = await page
-    .locator(
-      [
-        'a[href*="/login"]',
-        'button:has-text("Log In")',
-        'button:has-text("Đăng nhập")',
-      ].join(','),
-    )
-    .first()
-    .isVisible()
-    .catch(() => false);
-
-  if (redirectedToLogin || loginControlVisible) {
-    throw new Error('REDDIT_BACKEND_LOGIN_REQUIRED');
+  const hydrated = await applySyncedRedditSession(context);
+  if (hydrated) {
+    await navigateRedditHome(page);
+    if (!(await redditSessionMissing(page))) {
+      console.info(
+        '[reddit] Backend browser authenticated from the paired extension session.',
+      );
+      return;
+    }
   }
+
+  throw new Error(
+    'REDDIT_SESSION_SYNC_REQUIRED: open Reddit in the paired browser so the extension can synchronize the existing session',
+  );
 }

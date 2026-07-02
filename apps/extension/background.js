@@ -2,13 +2,24 @@ if (typeof lsGetConfig === 'undefined' || typeof lsEnsureKeyPair === 'undefined'
   importScripts('crypto.js', 'api.js');
 }
 
+let redditSyncTimer;
+
 chrome.runtime.onInstalled.addListener(() => {
   lsEnsureKeyPair().catch(() => undefined);
   lsGetConfig().then((config) => lsRegisterAppOrigin(config.appOrigin)).catch(() => undefined);
+  scheduleRedditSessionSync(1_000);
 });
 
 chrome.runtime.onStartup.addListener(() => {
   lsGetConfig().then((config) => lsRegisterAppOrigin(config.appOrigin)).catch(() => undefined);
+  scheduleRedditSessionSync(1_000);
+});
+
+chrome.cookies.onChanged.addListener((changeInfo) => {
+  const domain = String(changeInfo.cookie?.domain || '').replace(/^\./, '');
+  if (domain === 'reddit.com' || domain.endsWith('.reddit.com')) {
+    scheduleRedditSessionSync(1_500);
+  }
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -26,6 +37,8 @@ async function handleMessage(message) {
       return pairDevice(message.payload || {});
     case 'AUTHENTICATE':
       return authenticateDevice();
+    case 'SYNC_REDDIT_SESSION':
+      return syncRedditSession();
     case 'GET_STATE':
       return { ok: true, state: (await getState()).state, config: await lsGetConfig() };
     case 'SAVE_CONFIG':
@@ -40,6 +53,7 @@ async function getState() {
     LS_KEYS.deviceId,
     LS_KEYS.workspaceId,
     LS_KEYS.publicKey,
+    'redditSessionSyncedAt',
   ]);
   return {
     ok: true,
@@ -49,6 +63,7 @@ async function getState() {
       deviceId: stored[LS_KEYS.deviceId],
       workspaceId: stored[LS_KEYS.workspaceId],
       hasKey: Boolean(stored[LS_KEYS.publicKey]),
+      redditSessionSyncedAt: stored.redditSessionSyncedAt,
       version: chrome.runtime.getManifest().version,
       executionMode: 'BACKEND_ONLY',
     },
@@ -75,10 +90,19 @@ async function pairDevice(payload) {
     [LS_KEYS.deviceId]: result.deviceId,
     [LS_KEYS.workspaceId]: result.workspaceId,
   });
-  return { ok: true, deviceId: result.deviceId, workspaceId: result.workspaceId };
+  const redditSession = await syncRedditSession().catch((error) => ({
+    ok: false,
+    error: error.message || String(error),
+  }));
+  return {
+    ok: true,
+    deviceId: result.deviceId,
+    workspaceId: result.workspaceId,
+    redditSession,
+  };
 }
 
-async function authenticateDevice() {
+async function createDeviceTicket() {
   const stored = await chrome.storage.local.get(LS_KEYS.deviceId);
   const deviceId = stored[LS_KEYS.deviceId];
   if (!deviceId) throw new Error('Extension has not been paired');
@@ -97,5 +121,56 @@ async function authenticateDevice() {
       proof,
     }),
   });
-  return { ok: true, ticket: verified.ticket };
+  return verified.ticket;
+}
+
+async function authenticateDevice() {
+  const ticket = await createDeviceTicket();
+  return { ok: true, ticket };
+}
+
+async function syncRedditSession() {
+  const stored = await chrome.storage.local.get(LS_KEYS.deviceId);
+  if (!stored[LS_KEYS.deviceId]) {
+    return { ok: false, skipped: true, error: 'Extension has not been paired' };
+  }
+
+  const cookies = await chrome.cookies.getAll({ domain: '.reddit.com' });
+  const authenticated = cookies.filter((cookie) => cookie.value && cookie.name);
+  if (authenticated.length === 0) {
+    return {
+      ok: false,
+      skipped: true,
+      error: 'No existing Reddit browser session was found',
+    };
+  }
+
+  const ticket = await createDeviceTicket();
+  const config = await lsGetConfig();
+  const result = await lsApiFetch(config, '/auth/extension/reddit-session', {
+    method: 'POST',
+    body: JSON.stringify({
+      ticket,
+      cookies: authenticated.map((cookie) => ({
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: cookie.path || '/',
+        expires: cookie.expirationDate,
+        httpOnly: cookie.httpOnly,
+        secure: cookie.secure,
+        sameSite: cookie.sameSite,
+      })),
+    }),
+  });
+
+  await chrome.storage.local.set({ redditSessionSyncedAt: result.syncedAt });
+  return result;
+}
+
+function scheduleRedditSessionSync(delayMs = 1_000) {
+  clearTimeout(redditSyncTimer);
+  redditSyncTimer = setTimeout(() => {
+    syncRedditSession().catch(() => undefined);
+  }, delayMs);
 }
