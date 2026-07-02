@@ -173,12 +173,25 @@ export class LlmService {
     });
   }
 
-  async verify(workspaceId: string, ownerUserId: string, id: string) {
+  async verify(workspaceId: string, actorUserId: string, id: string) {
     const connection = await this.prisma.llmConnection.findFirst({
-      where: { id, workspaceId, ownerUserId, deletedAt: null },
+      where: { id, workspaceId, deletedAt: null },
       include: { models: true },
     });
     if (!connection) throw new NotFoundException('Connection not found');
+
+    const membership = await this.prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId,
+          userId: actorUserId,
+        },
+      },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this workspace');
+    }
 
     const oauthCredential = await this.production.getFreshProviderCredential(
       connection.id,
