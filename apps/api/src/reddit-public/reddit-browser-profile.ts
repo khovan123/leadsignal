@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { chromium, type BrowserContext, type Page } from 'playwright';
+import { navigateRedditPage } from './reddit-navigation';
 import { resolveRedditRuntimePath } from './reddit-runtime-path';
 import { applySyncedRedditSession } from './reddit-session-store';
 
@@ -24,16 +25,6 @@ function envBoolean(
   );
 }
 
-function positiveInteger(
-  value: string | undefined,
-  fallback: number,
-): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0
-    ? Math.floor(parsed)
-    : fallback;
-}
-
 export function redditProfileDirectory(): string {
   return resolveRedditRuntimePath(
     process.env.REDDIT_BACKEND_PROFILE_DIR,
@@ -52,6 +43,8 @@ export async function launchRedditBackendContext(): Promise<BrowserContext> {
 
   const channel =
     process.env.REDDIT_BROWSER_CHANNEL?.trim() || undefined;
+  const configuredUserAgent =
+    process.env.REDDIT_CRAWLER_USER_AGENT?.trim() || undefined;
 
   const options: PersistentContextOptions = {
     headless: !envBoolean(
@@ -68,9 +61,9 @@ export async function launchRedditBackendContext(): Promise<BrowserContext> {
       width: 1440,
       height: 1000,
     },
-    userAgent:
-      process.env.REDDIT_CRAWLER_USER_AGENT ??
-      'LeadSignalBackendCollector/1.0',
+    ...(configuredUserAgent
+      ? { userAgent: configuredUserAgent }
+      : {}),
   };
 
   try {
@@ -105,12 +98,8 @@ async function redditSessionMissing(page: Page): Promise<boolean> {
 }
 
 async function navigateRedditHome(page: Page): Promise<void> {
-  await page.goto('https://www.reddit.com/', {
-    waitUntil: 'domcontentloaded',
-    timeout: positiveInteger(
-      process.env.REDDIT_CRAWLER_NAVIGATION_TIMEOUT_MS,
-      30_000,
-    ),
+  await navigateRedditPage(page, 'https://www.reddit.com/', {
+    log: (message) => console.warn(`[reddit-session] ${message}`),
   });
 }
 
