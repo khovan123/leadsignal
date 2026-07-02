@@ -43,8 +43,18 @@ export async function launchRedditBackendContext(): Promise<BrowserContext> {
 
   const channel =
     process.env.REDDIT_BROWSER_CHANNEL?.trim() || undefined;
-  const configuredUserAgent =
+  const requestedUserAgent =
     process.env.REDDIT_CRAWLER_USER_AGENT?.trim() || undefined;
+  const configuredUserAgent =
+    requestedUserAgent === 'LeadSignalBackendCollector/1.0'
+      ? undefined
+      : requestedUserAgent;
+
+  if (requestedUserAgent && !configuredUserAgent) {
+    console.warn(
+      '[reddit] Ignoring the legacy bot-like REDDIT_CRAWLER_USER_AGENT and using the native browser user agent.',
+    );
+  }
 
   const options: PersistentContextOptions = {
     headless: !envBoolean(
